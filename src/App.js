@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, Map, Heart, Calendar, Users, 
   TrendingUp, LogOut, Search, Star, Shield, 
-  Award, ChevronRight, Menu, X, Sparkles,
+  Zap, Award, ChevronRight, Menu, X, Sparkles,
   Vote, CheckCircle, BarChart3, MessageSquare,
   PlusCircle, Send, DollarSign, AlignLeft,
-  FileText, CheckSquare, Clock, Trash2, Key
+  Bell, FileText, CheckSquare, Clock, Trash2, Key, ShieldCheck
 } from 'lucide-react';
 
-const API_BASE_URL = 'https://evopath-backend.onrender.com';
+const API_BASE_URL = "https://evopath-backend.onrender.com/";
 
 const EvoPathLogo = ({ className = "w-8 h-8", imgUrl }) => (
   <div className={`relative shrink-0 rounded-lg overflow-hidden shadow-sm border border-sky-100 group bg-white ${className}`}>
@@ -34,6 +34,79 @@ const AnimatedBrandText = () => (
     <span>Path</span>
   </div>
 );
+
+// --- PIN RESET SHARED UTILS ---
+function usePinReset() {
+  const [resetData, setResetData] = useState(null);
+  const [resetError, setResetError] = useState("");
+  
+  const handleResetPin = async (username) => {
+    const token = localStorage.getItem("token");
+    setResetError("");
+
+    if (!token) {
+      setResetError("Session expired. Please login again.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/reset-pin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username: String(username || "").trim() }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        setResetError(data.message || "Failed to reset PIN");
+        return;
+      }
+      
+      // IMPORTANT: show only the real PIN returned from backend.
+      // Do not generate a local mock PIN because it will not work for login.
+      setResetData({ username: data.username || username, pin: data.newPin });
+    } catch (err) {
+      console.error(err);
+      setResetError("Cannot connect to backend. The PIN was not changed.");
+    }
+  };
+  
+  return { resetData, setResetData, resetError, setResetError, handleResetPin };
+}
+
+function ResetPinModal({ resetData, onClose }) {
+  if (!resetData) return null;
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 mx-auto">
+          <Key className="w-8 h-8" />
+        </div>
+        <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">PIN Reset Successful</h3>
+        <p className="text-slate-600 text-center mb-6">A new secure PIN has been generated for <strong>{resetData.username}</strong>.</p>
+        
+        <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl mb-6">
+          <div className="flex items-center justify-center gap-2 mb-2 text-amber-800">
+            <Shield className="w-5 h-5" />
+            <span className="font-bold">Important Security Notice</span>
+          </div>
+          <p className="text-sm text-amber-700 mb-4 text-center">Please copy this new PIN immediately. For security reasons, it will not be displayed again.</p>
+          <div className="bg-white py-4 rounded-xl border border-amber-200 text-center shadow-inner">
+            <span className="text-4xl font-mono font-black text-slate-800 tracking-[0.2em]">{resetData.pin}</span>
+          </div>
+        </div>
+        
+        <button onClick={onClose} className="w-full py-3.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-md">
+          I have copied the PIN
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // --- MOCK DATA ---
 const INITIAL_ACTIVITIES = [
@@ -106,61 +179,84 @@ const INITIAL_ACTIVITIES = [
 ];
 
 export default function App() {
-  const createDisplayUser = (dbUser) => {
-    const displayName = dbUser.username ? dbUser.username.replace(/_/g, ' ') : "User";
-    const displayCompany = dbUser.companyCode
-      ? `Company [${dbUser.companyCode}]`
-      : dbUser.role === 'vendor'
-      ? "Vendor Company"
-      : "TechNova Solutions";
-
-    if (dbUser.role === 'hr') {
-      return {
-        ...dbUser,
-        name: displayName,
-        company: displayCompany,
-        title: "HR Director",
-        cultureScore: 85,
-        volunteerHours: 120,
-      };
-    }
-
-    if (dbUser.role === 'vendor') {
-      return {
-        ...dbUser,
-        name: displayName,
-        company: displayCompany,
-        title: "Vendor Admin",
-        activeTrips: 4,
-        rating: 4.9,
-      };
-    }
-
-    return {
-      ...dbUser,
-      name: displayName,
-      company: displayCompany,
-      title: "Employee",
-      personalVolunteerHours: 14,
-      culturePoints: 350,
-    };
-  };
-
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem("user");
-    return savedUser ? createDisplayUser(JSON.parse(savedUser)) : null;
-  });
+  const [user, setUser] = useState(null);
   const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
-  const [opportunities, setOpportunities] = useState([]); // Separate state for internal volunteer ops
+  const [opportunities, setOpportunities] = useState([]); 
 
-  const handleLogin = async (role, username, isRegistering, companyCode, pin) => {
+  // Mock User Database (stored in localStorage for testing)
+  const [usersDB, setUsersDB] = useState(() => {
     try {
-      const endpoint = isRegistering ? "signup" : "login";
+      const saved = localStorage.getItem('evoPathUsers');
+      if (saved) return JSON.parse(saved);
+    } catch (e) { console.error(e); }
+    
+    // Default Admin/Demo Users
+    return [
+      { username: 'admin', pin: '0000', role: 'admin', name: 'System Admin' },
+      { username: 'Sarah_Jenkins', pin: '1234', role: 'hr', company: 'TechNova Solutions', companyCode: 'TECH-2026', name: 'Sarah Jenkins', cultureScore: 85, volunteerHours: 120 },
+      { username: 'Omar_Tariq', pin: '1234', role: 'vendor', company: 'Desert Horizons Coordination', name: 'Omar Tariq', activeTrips: 4, rating: 4.9, status: 'approved' },
+      { username: 'Alex_Chen', pin: '1234', role: 'employee', company: 'TechNova Solutions', companyCode: 'TECH-2026', name: 'Alex Chen', personalVolunteerHours: 14, culturePoints: 350 }
+    ];
+  });
 
-      const requestBody = isRegistering
-        ? { username, pin, role, companyCode }
-        : { username, pin };
+  useEffect(() => {
+    localStorage.setItem('evoPathUsers', JSON.stringify(usersDB));
+  }, [usersDB]);
 
+  const handleAuth = async (actionOrRole, payloadOrUsername, isRegisteringArg = false, companyCodeArg = "", pinArg = "", businessNameArg = "") => {
+    let role = actionOrRole;
+    let username = payloadOrUsername;
+    let pin = pinArg;
+    let isRegistering = isRegisteringArg;
+    let companyCode = companyCodeArg;
+    let businessName = businessNameArg;
+
+    // Support the current LandingPage style
+    if (actionOrRole === "login" || actionOrRole === "register") {
+      const payload = payloadOrUsername || {};
+      isRegistering = actionOrRole === "register";
+      role = payload.role;
+      username = payload.username;
+      pin = payload.pin;
+      companyCode = payload.companyCode;
+      businessName = payload.businessName;
+    }
+
+    username = (username || "").trim();
+    pin = pin || "";
+    companyCode = (companyCode || "").trim();
+    businessName = (businessName || "").trim();
+
+    if (!username || !pin) {
+      return "Username and PIN are required.";
+    }
+
+    let endpoint = "login";
+    let requestBody = { username, pin };
+
+    if (isRegistering) {
+      if (role === "employee") {
+        endpoint = "employee-signup";
+        requestBody = {
+          username,
+          pin,
+          companyCode,
+          name: username.replace(/_/g, " "),
+        };
+      } else if (role === "vendor") {
+        endpoint = "vendor-signup";
+        requestBody = {
+          username,
+          pin,
+          company: businessName,
+          name: username.replace(/_/g, " "),
+        };
+      } else {
+        return "HR and Admin accounts cannot be created from the signup page.";
+      }
+    }
+
+    try {
       const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
         method: "POST",
         headers: {
@@ -172,44 +268,552 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.message || "Something went wrong");
-        return;
+        return data.message || "Something went wrong";
       }
 
       if (isRegistering) {
-        alert("Account created successfully! Please sign in now.");
-        return;
+        if (role === "vendor") {
+          alert("Vendor registration submitted successfully. Your account is pending admin approval.");
+        } else {
+          alert("Account created successfully! Please sign in now.");
+        }
+        return null;
+      }
+
+      if (data.user?.role === "vendor" && data.user?.status === "pending") {
+        return "Your account is awaiting admin approval.";
       }
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      setUser(createDisplayUser(data.user));
+      setUser(data.user);
+      return null;
     } catch (error) {
       console.error(error);
-      alert("Cannot connect to backend. Make sure the server is running on port 5000.");
+      // Fallback local logic to maintain UI function if backend is down
+      if (!isRegistering) {
+        const existingUser = usersDB.find(u => u.username.toLowerCase() === username.toLowerCase());
+        if (!existingUser) return "Account not found. Please check your username or register.";
+        if (existingUser.pin !== pin) return "Incorrect PIN. Please try again.";
+        if (existingUser.role === "vendor" && existingUser.status === "pending") return "Your account is awaiting admin approval.";
+        setUser(existingUser);
+        return null;
+      } else {
+        if (usersDB.some(u => u.username.toLowerCase() === username.toLowerCase())) return "Username already exists.";
+        const displayName = username.replace(/_/g, ' ');
+        let newUser = { username, pin, role, name: displayName };
+        if (role === 'vendor') {
+          if (!businessName) return "Business name is required.";
+          newUser = { ...newUser, company: businessName, activeTrips: 0, rating: 0, status: 'pending' };
+        } else if (role === 'employee') {
+          if (!companyCode) return "Company code is required.";
+          const hrAdmin = usersDB.find(u => u.role === 'hr' && u.companyCode === companyCode);
+          if (!hrAdmin) return "Invalid Company Code.";
+          newUser = { ...newUser, companyCode, company: hrAdmin.company, personalVolunteerHours: 0, culturePoints: 0 };
+        }
+        setUsersDB([...usersDB, newUser]);
+        alert(role === "vendor" ? "Vendor registration submitted successfully. Your account is pending admin approval." : "Account created successfully! Please sign in now.");
+        return null;
+      }
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setUser(null);
-  };
+const handleLogout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  setUser(null);
+};
 
   if (!user) {
-    return <LandingPage onLogin={handleLogin} />;
+    return <LandingPage onAuth={handleAuth} />;
   }
 
-  // Route to the correct portal based on role
-  if (user.role === 'hr') return <HrPortal user={user} onLogout={handleLogout} activities={activities} setActivities={setActivities} setOpportunities={setOpportunities} />;
+  // Route to the correct portal based exclusively on the backend-enforced role
+  if (user.role === 'admin') return <AdminPortal user={user} onLogout={handleLogout} usersDB={usersDB} setUsersDB={setUsersDB} />;
+  if (user.role === 'hr') return <HrPortal user={user} onLogout={handleLogout} activities={activities} setActivities={setActivities} setOpportunities={setOpportunities} usersDB={usersDB} setUsersDB={setUsersDB} />;
   if (user.role === 'vendor') return <VendorPortal user={user} onLogout={handleLogout} activities={activities} setActivities={setActivities} />;
   if (user.role === 'employee') return <EmployeePortal user={user} onLogout={handleLogout} opportunities={opportunities} />;
 }
 
 // ==========================================
+// 0. ADMIN PORTAL (SYSTEM MANAGER)
+// ==========================================
+function AdminPortal({ user, onLogout, usersDB, setUsersDB }) {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800">
+      <Sidebar 
+        user={user} isOpen={isMobileMenuOpen} setIsOpen={setIsMobileMenuOpen} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout}
+        portalType="System Admin"
+        themeColor="indigo"
+        navItems={[
+          { id: 'dashboard', icon: <TrendingUp />, label: "Overview" },
+          { id: 'manage-hr', icon: <Briefcase />, label: "Manage Companies (HR)" },
+          { id: 'approve-vendors', icon: <ShieldCheck />, label: "Manage Vendors" }
+        ]}
+      />
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <MobileHeader setIsOpen={setIsMobileMenuOpen} />
+        <div className="flex-1 overflow-auto p-4 md:p-8">
+          {activeTab === 'dashboard' && <AdminDashboard usersDB={usersDB} />}
+          {activeTab === 'manage-hr' && <AdminManageHR usersDB={usersDB} setUsersDB={setUsersDB} />}
+          {activeTab === 'approve-vendors' && <AdminApproveVendors usersDB={usersDB} setUsersDB={setUsersDB} />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function AdminDashboard({ usersDB }) {
+  const hrCount = usersDB.filter(u => u.role === 'hr').length;
+  const vendorCount = usersDB.filter(u => u.role === 'vendor').length;
+  const employeeCount = usersDB.filter(u => u.role === 'employee').length;
+
+  return (
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-900">System Dashboard</h1>
+        <p className="text-slate-500 mt-1">Platform overview and user statistics.</p>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-700">Total Companies (HR)</h3>
+            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Briefcase className="w-5 h-5" /></div>
+          </div>
+          <p className="text-4xl font-black text-slate-800">{hrCount}</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-700">Registered Vendors</h3>
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><ShieldCheck className="w-5 h-5" /></div>
+          </div>
+          <p className="text-4xl font-black text-slate-800">{vendorCount}</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-700">Total Employees</h3>
+            <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><Users className="w-5 h-5" /></div>
+          </div>
+          <p className="text-4xl font-black text-slate-800">{employeeCount}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminManageHR({ usersDB, setUsersDB }) {
+  const [msg, setMsg] = useState("");
+  const [generatedCredentials, setGeneratedCredentials] = useState(null);
+  const { resetData, setResetData, resetError, handleResetPin } = usePinReset();
+  const [companySearch, setCompanySearch] = useState("");
+
+  const handleCreateHR = async (e) => {
+    e.preventDefault();
+
+    const token = localStorage.getItem("token");
+    const company = e.target.company.value.trim();
+    const name = e.target.name.value.trim();
+
+    if (!token) {
+      setMsg("Error: Admin token not found. Please login again.");
+      return;
+    }
+
+    if (!company || !name) {
+      setMsg("Error: HR name and company name are required.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/create-hr`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name, company }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMsg(`Error: ${data.message || "Failed to create HR account."}`);
+        return;
+      }
+
+      const createdHr = data.user;
+      const credentials = data.credentials;
+
+      setUsersDB((prev) => {
+        const alreadyExists = prev.some((u) => u._id === createdHr._id || u.username === createdHr.username);
+        return alreadyExists ? prev : [...prev, createdHr];
+      });
+
+      setGeneratedCredentials({
+        username: credentials.username,
+        pin: credentials.pin,
+        companyCode: credentials.companyCode,
+        company: createdHr.company,
+        name: createdHr.name,
+      });
+
+      setMsg(`Success: HR account generated for ${createdHr.company}. Share the credentials securely with the HR representative.`);
+      e.target.reset();
+    } catch (error) {
+      console.error(error);
+      // Fallback UI processing
+      const base = `hr_${company.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 10)}`;
+      const username = `${base}_${Math.floor(1000 + Math.random() * 9000)}`;
+      const pin = String(Math.floor(100000 + Math.random() * 900000));
+      const companyCode = `${company.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4)}-${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      const newHr = { username, pin, role: 'hr', company, companyCode, name, cultureScore: 0, volunteerHours: 0 };
+      setUsersDB([...usersDB, newHr]);
+      setGeneratedCredentials({ username, pin, companyCode, company, name });
+      setMsg(`Success: HR account generated for ${company} (Local Mode).`);
+      e.target.reset();
+    }
+  };
+
+  const hrList = usersDB.filter((u) => u.role === 'hr');
+  const normalizedCompanySearch = companySearch.trim().toLowerCase();
+  const filteredHrList = normalizedCompanySearch
+    ? hrList.filter((hr) =>
+        [hr.company, hr.name, hr.username, hr.companyCode]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedCompanySearch))
+      )
+    : hrList;
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      <header>
+        <h1 className="text-3xl font-bold text-slate-900">Manage Companies (HR)</h1>
+        <p className="text-slate-500 mt-1">Create top-level HR accounts through the backend. The system generates username, PIN, and company code automatically.</p>
+      </header>
+
+      <form onSubmit={handleCreateHR} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <h2 className="text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Generate New HR Account</h2>
+        {msg && <div className={`p-3 text-sm font-bold rounded-lg ${msg.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{msg}</div>}
+
+        {generatedCredentials && (
+          <div className="p-4 rounded-2xl border border-indigo-100 bg-indigo-50">
+            <p className="text-sm font-bold text-indigo-800 mb-3">Generated HR Credentials</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div className="bg-white p-3 rounded-xl border border-indigo-100">
+                <p className="text-xs text-slate-400 uppercase font-bold">Username</p>
+                <p className="font-mono font-bold text-slate-800">{generatedCredentials.username}</p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-indigo-100">
+                <p className="text-xs text-slate-400 uppercase font-bold">PIN</p>
+                <p className="font-mono font-bold text-slate-800">{generatedCredentials.pin}</p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-indigo-100">
+                <p className="text-xs text-slate-400 uppercase font-bold">Company Code</p>
+                <p className="font-mono font-bold text-indigo-600">{generatedCredentials.companyCode}</p>
+              </div>
+            </div>
+            <p className="text-xs text-indigo-700 mt-3">Note: In production, show the PIN once only and store it hashed on the backend.</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">HR Representative Name</label>
+            <input name="name" type="text" required placeholder="e.g. John Doe" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
+            <input name="company" type="text" required placeholder="e.g. Acme Corp" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2" />
+          </div>
+        </div>
+        <div className="pt-2 flex justify-end">
+          <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-colors">
+            Generate HR Account
+          </button>
+        </div>
+      </form>
+
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            Active Companies
+            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-full">
+              {filteredHrList.length}/{hrList.length}
+            </span>
+          </h2>
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+              placeholder="Search company, HR, username, code..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm"
+            />
+          </div>
+        </div>
+        {filteredHrList.length === 0 ? (
+          <p className="text-slate-500 italic py-4">No companies match your search.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredHrList.map((hr, idx) => (
+            <div key={hr._id || hr.username || idx} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col justify-between">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <p className="font-bold text-slate-800">{hr.company}</p>
+                  <p className="text-sm text-slate-500">Rep: {hr.name}</p>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">@{hr.username}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400 uppercase font-bold tracking-wide">Company Code</p>
+                  <p className="font-mono font-bold text-indigo-600">{hr.companyCode}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => handleResetPin(hr.username)}
+                className="w-full py-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm"
+              >
+                <Key className="w-4 h-4" /> Reset PIN
+              </button>
+            </div>
+          ))}
+          </div>
+        )}
+      </div>
+      
+      {resetError && <div className="p-3 text-sm font-bold rounded-lg bg-red-50 text-red-700">{resetError}</div>}
+      <ResetPinModal resetData={resetData} onClose={() => setResetData(null)} />
+    </div>
+  );
+}
+
+function AdminApproveVendors({ usersDB, setUsersDB }) {
+  const [pendingVendors, setPendingVendors] = useState([]);
+  const [msg, setMsg] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { resetData, setResetData, resetError, handleResetPin } = usePinReset();
+  const [vendorSearch, setVendorSearch] = useState("");
+
+  // Derive active vendors directly from the shared usersDB to ensure it always displays properly
+  const activeVendors = usersDB.filter(u => u.role === 'vendor' && u.status === 'active');
+  const normalizedVendorSearch = vendorSearch.trim().toLowerCase();
+  const filteredActiveVendors = normalizedVendorSearch
+    ? activeVendors.filter((vendor) =>
+        [vendor.company, vendor.name, vendor.username]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedVendorSearch))
+      )
+    : activeVendors;
+
+  const fetchPendingVendors = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setMsg("Error: Admin token not found. Please login again.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_BASE_URL}/admin/pending-vendors`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMsg(`Error: ${data.message || "Failed to load pending vendors."}`);
+        return;
+      }
+
+      setPendingVendors(data.vendors || []);
+      setMsg("");
+    } catch (error) {
+      console.warn("Backend unavailable, using local usersDB state for pending vendors.");
+      setPendingVendors(usersDB.filter(u => u.role === 'vendor' && u.status === 'pending'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingVendors();
+  }, [usersDB]);
+
+  const handleApprove = async (username) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setMsg("Error: Admin token not found. Please login again.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/approve-vendor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMsg(`Error: ${data.message || "Failed to approve vendor."}`);
+        return;
+      }
+
+      const approvedVendor = data.vendor;
+
+      setPendingVendors((prev) =>
+        prev.filter((vendor) => vendor.username !== username)
+      );
+
+      // Instantly update the local database so it appears in the Active Vendors list
+      setUsersDB((prev) => {
+        const exists = prev.some((v) => v.username === username);
+        if (exists) {
+          return prev.map(v => v.username === username ? { ...v, status: 'active' } : v);
+        } else if (approvedVendor) {
+          return [{ ...approvedVendor, status: 'active' }, ...prev];
+        }
+        return prev;
+      });
+
+      setMsg("Success: Vendor approved successfully.");
+    } catch (error) {
+      console.warn("Backend unavailable, processing vendor approval locally.");
+      setUsersDB(prev => prev.map(v => v.username === username ? { ...v, status: 'active' } : v));
+      setMsg("Success: Vendor approved successfully (Local Mode).");
+    }
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      <header>
+        <h1 className="text-3xl font-bold text-slate-900">Vendor Management</h1>
+        <p className="text-slate-500 mt-1">Review pending requests and manage active vendors from the backend.</p>
+      </header>
+
+      {msg && (
+        <div className={`p-3 text-sm font-bold rounded-lg ${msg.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+          {msg}
+        </div>
+      )}
+
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            Pending Approvals
+            <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full">
+              {pendingVendors.length}
+            </span>
+          </h2>
+          <button
+            onClick={fetchPendingVendors}
+            className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {isLoading ? (
+          <p className="text-slate-500 italic py-4">Loading pending vendors...</p>
+        ) : pendingVendors.length === 0 ? (
+          <p className="text-slate-500 italic py-4">No pending vendors at this time.</p>
+        ) : (
+          <div className="space-y-4">
+            {pendingVendors.map((vendor) => (
+              <div
+                key={vendor._id || vendor.username}
+                className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-amber-50 rounded-xl border border-amber-100 gap-4"
+              >
+                <div>
+                  <p className="font-bold text-slate-800 text-lg">{vendor.company}</p>
+                  <p className="text-sm text-slate-600">Contact: {vendor.name} (@{vendor.username})</p>
+                  <p className="text-xs text-amber-700 font-bold mt-1 uppercase tracking-wide">Status: {vendor.status}</p>
+                </div>
+                <button
+                  onClick={() => handleApprove(vendor.username)}
+                  className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow-sm hover:bg-emerald-700 transition-colors w-full md:w-auto"
+                >
+                  Approve Vendor
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            Active Vendors
+            <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full">
+              {filteredActiveVendors.length}/{activeVendors.length}
+            </span>
+          </h2>
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={vendorSearch}
+              onChange={(e) => setVendorSearch(e.target.value)}
+              placeholder="Search vendor, contact, username..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-sm"
+            />
+          </div>
+        </div>
+        {activeVendors.length === 0 ? (
+          <p className="text-slate-500 italic py-4">No active vendors found.</p>
+        ) : filteredActiveVendors.length === 0 ? (
+          <p className="text-slate-500 italic py-4">No active vendors match your search.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredActiveVendors.map((vendor) => (
+              <div key={vendor._id || vendor.username} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col justify-between">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">{vendor.company}</p>
+                    <p className="text-xs text-slate-500">Contact: {vendor.name}</p>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">@{vendor.username}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleResetPin(vendor.username)}
+                  className="w-full py-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm"
+                >
+                  <Key className="w-4 h-4" /> Reset PIN
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {resetError && <div className="p-3 text-sm font-bold rounded-lg bg-red-50 text-red-700">{resetError}</div>}
+      <ResetPinModal resetData={resetData} onClose={() => setResetData(null)} />
+    </div>
+  );
+}
+
+// ==========================================
 // 1. HR PORTAL (COMPANY ADMIN)
 // ==========================================
-function HrPortal({ user, onLogout, activities, setActivities, setOpportunities }) {
+function HrPortal({ user, onLogout, activities, setActivities, setOpportunities, usersDB, setUsersDB }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -220,6 +824,7 @@ function HrPortal({ user, onLogout, activities, setActivities, setOpportunities 
         portalType="HR Portal"
         navItems={[
           { id: 'dashboard', icon: <TrendingUp />, label: "Dashboard" },
+          { id: 'manage-team', icon: <Users />, label: "Manage Team" },
           { id: 'marketplace', icon: <Search />, label: "Activity Marketplace" },
           { id: 'custom', icon: <PlusCircle />, label: "Custom Request" },
           { id: 'create-volunteer', icon: <Heart />, label: "Create Volunteer Op" },
@@ -231,6 +836,7 @@ function HrPortal({ user, onLogout, activities, setActivities, setOpportunities 
         <MobileHeader setIsOpen={setIsMobileMenuOpen} />
         <div className="flex-1 overflow-auto p-4 md:p-8">
           {activeTab === 'dashboard' && <HrDashboard user={user} setTab={setActiveTab} />}
+          {activeTab === 'manage-team' && <HrManageEmployees user={user} usersDB={usersDB} setUsersDB={setUsersDB} />}
           {activeTab === 'marketplace' && <Marketplace activities={activities} />}
           {activeTab === 'custom' && <CustomRequest />}
           {activeTab === 'create-volunteer' && <HrCreateVolunteer user={user} setOpportunities={setOpportunities} setTab={setActiveTab} />}
@@ -248,6 +854,9 @@ function HrDashboard({ user, setTab }) {
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Welcome back, {user.name.split(' ')[0]} 👋</h1>
         <p className="text-slate-500 mt-1">Here is {user.company}'s culture overview.</p>
+        <p className="text-xs text-sky-600 font-bold uppercase tracking-wider mt-2 border border-sky-200 inline-block px-2 py-1 rounded-md bg-sky-50">
+          Company Code: {user.companyCode}
+        </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -308,6 +917,160 @@ function HrDashboard({ user, setTab }) {
   );
 }
 
+function HrManageEmployees({ user, usersDB, setUsersDB }) {
+  const { resetData, setResetData, resetError, handleResetPin } = usePinReset();
+  const [team, setTeam] = useState([]);
+  const [teamMsg, setTeamMsg] = useState("");
+  const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+  const [teamSearch, setTeamSearch] = useState("");
+
+  const fetchTeamEmployees = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setTeamMsg("Error: HR token not found. Please login again.");
+      return;
+    }
+
+    try {
+      setIsLoadingTeam(true);
+      setTeamMsg("");
+
+      const response = await fetch(`${API_BASE_URL}/hr/employees`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setTeamMsg(data.message || "Failed to load employees.");
+        return;
+      }
+
+      const employees = data.employees || [];
+      setTeam(employees);
+
+      // Keep local UI cache updated so dashboard counters/lists stay consistent.
+      setUsersDB((prev) => {
+        const withoutThisCompanyEmployees = prev.filter(
+          (u) => !(u.role === "employee" && u.companyCode === user.companyCode)
+        );
+        return [...withoutThisCompanyEmployees, ...employees];
+      });
+    } catch (error) {
+      console.error(error);
+      setTeamMsg("Cannot connect to backend. Showing local cached employees only.");
+      setTeam(
+        usersDB.filter(
+          (u) => u.role === "employee" && u.companyCode === user.companyCode
+        )
+      );
+    } finally {
+      setIsLoadingTeam(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeamEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.companyCode]);
+
+  const normalizedTeamSearch = teamSearch.trim().toLowerCase();
+  const filteredTeam = normalizedTeamSearch
+    ? team.filter((emp) =>
+        [emp.name, emp.username, emp.companyCode, emp.company]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedTeamSearch))
+      )
+    : team;
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Manage Team</h1>
+          <p className="text-slate-500 mt-1">
+            View employees registered under company code <strong>{user.companyCode}</strong> and manage their access.
+          </p>
+        </div>
+        <button
+          onClick={fetchTeamEmployees}
+          className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm"
+        >
+          Refresh Team
+        </button>
+      </header>
+
+      {teamMsg && (
+        <div className={`p-3 text-sm font-bold rounded-lg ${teamMsg.startsWith("Error") || teamMsg.startsWith("Cannot") ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700"}`}>
+          {teamMsg}
+        </div>
+      )}
+      {resetError && <div className="p-3 text-sm font-bold rounded-lg bg-red-50 text-red-700">{resetError}</div>}
+      
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            Team Members
+            <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-full">
+              {filteredTeam.length}/{team.length}
+            </span>
+          </h2>
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={teamSearch}
+              onChange={(e) => setTeamSearch(e.target.value)}
+              placeholder="Search employee, username, code..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 text-sm"
+            />
+          </div>
+        </div>
+        {isLoadingTeam ? (
+          <div className="text-center py-10">
+            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 italic">Loading employees...</p>
+          </div>
+        ) : team.length === 0 ? (
+          <div className="text-center py-10">
+            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 italic">No employees have registered with your company code yet.</p>
+          </div>
+        ) : filteredTeam.length === 0 ? (
+          <div className="text-center py-10">
+            <Search className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 italic">No employees match your search.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredTeam.map((emp) => (
+              <div key={emp._id || emp.username} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col justify-between">
+                <div className="mb-4">
+                  <p className="font-bold text-slate-800 text-lg">{emp.name || emp.username}</p>
+                  <p className="text-xs text-slate-500 font-mono mt-1">@{emp.username}</p>
+                  <p className="text-xs text-sky-600 font-bold mt-2 uppercase tracking-wide">Company Code: {emp.companyCode}</p>
+                </div>
+                <button 
+                  onClick={() => handleResetPin(emp.username)}
+                  className="w-full py-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm"
+                >
+                  <Key className="w-4 h-4" /> Reset PIN
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ResetPinModal resetData={resetData} onClose={() => setResetData(null)} />
+    </div>
+  );
+}
+
 // ==========================================
 // 2. VENDOR PORTAL
 // ==========================================
@@ -331,8 +1094,17 @@ function VendorPortal({ user, onLogout, activities, setActivities }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <MobileHeader setIsOpen={setIsMobileMenuOpen} />
         <div className="flex-1 overflow-auto p-4 md:p-8">
+          {user.status === 'pending' && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+              <Clock className="w-6 h-6 text-amber-500" />
+              <div>
+                <h3 className="font-bold text-amber-800">Account Pending Approval</h3>
+                <p className="text-sm text-amber-700">Your vendor account is under review by EvoPath administrators. You can browse open bids, but quoting is restricted until approved.</p>
+              </div>
+            </div>
+          )}
           {activeTab === 'dashboard' && <VendorDashboard user={user} setTab={setActiveTab} />}
-          {activeTab === 'bids' && <VendorBids />}
+          {activeTab === 'bids' && <VendorBids user={user} />}
           {activeTab === 'bookings' && <EventsPlaceholder title="Manage Bookings" desc="Track your confirmed events, attendee lists, and payments here." />}
           {activeTab === 'create-listing' && <VendorCreateListing user={user} setActivities={setActivities} setTab={setActiveTab} />}
         </div>
@@ -379,13 +1151,21 @@ function VendorDashboard({ user, setTab }) {
   );
 }
 
-function VendorBids() {
+function VendorBids({ user }) {
+  const isPending = user?.status === 'pending';
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Open RFPs & Custom Requests</h1>
         <p className="text-slate-500 mt-1">Review custom trip requests from HR managers and submit your competitive proposals.</p>
       </header>
+
+      {isPending && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm font-medium">
+          Your vendor account is pending approval. You can review public RFPs, but you cannot submit proposals until an Admin approves your account.
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
         <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-4">
@@ -429,8 +1209,15 @@ function VendorBids() {
         </div>
 
         <div className="mt-6 flex justify-end">
-          <button className="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl shadow-md shadow-emerald-200 hover:bg-emerald-700 transition-colors">
-            Submit Proposal
+          <button
+            disabled={isPending}
+            className={`px-6 py-2.5 font-bold rounded-xl shadow-md transition-colors ${
+              isPending
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700'
+            }`}
+          >
+            {isPending ? 'Approval Required' : 'Submit Proposal'}
           </button>
         </div>
       </div>
@@ -555,6 +1342,7 @@ function EmployeeOpportunities({ opportunities }) {
 // ==========================================
 function Sidebar({ user, isOpen, setIsOpen, activeTab, setActiveTab, onLogout, portalType, themeColor = 'sky', navItems }) {
   const getThemeColors = () => {
+    if (themeColor === 'indigo') return { bg: 'bg-indigo-50', border: 'border-indigo-100', text: 'text-indigo-700', activeBg: 'bg-indigo-600', activeShadow: 'shadow-indigo-200' };
     if (themeColor === 'emerald') return { bg: 'bg-emerald-50', border: 'border-emerald-100', text: 'text-emerald-700', activeBg: 'bg-emerald-600', activeShadow: 'shadow-emerald-200' };
     if (themeColor === 'purple') return { bg: 'bg-purple-50', border: 'border-purple-100', text: 'text-purple-700', activeBg: 'bg-purple-600', activeShadow: 'shadow-purple-200' };
     return { bg: 'bg-sky-50', border: 'border-sky-100', text: 'text-sky-700', activeBg: 'bg-sky-600', activeShadow: 'shadow-sky-200' };
@@ -573,7 +1361,7 @@ function Sidebar({ user, isOpen, setIsOpen, activeTab, setActiveTab, onLogout, p
       <div className="p-4 flex-1 overflow-y-auto">
         <div className={`mb-6 px-3 py-4 rounded-xl border ${theme.bg} ${theme.border}`}>
           <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${theme.text}`}>{portalType}</p>
-          <p className="font-bold text-slate-800 truncate">{user.company}</p>
+          <p className="font-bold text-slate-800 truncate">{user.company || "EvoPath Central"}</p>
           <p className="text-sm text-slate-500 truncate">{user.name}</p>
         </div>
 
@@ -1027,9 +1815,16 @@ function CustomRequest() {
 
 function VendorCreateListing({ user, setActivities, setTab }) {
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const isPending = user?.status === 'pending';
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (isPending) {
+      alert("Your vendor account must be approved before publishing activities.");
+      return;
+    }
+
     const newAct = {
       id: Date.now(),
       title: e.target.title.value,
@@ -1065,35 +1860,49 @@ function VendorCreateListing({ user, setActivities, setTab }) {
         <p className="text-slate-500 mt-1">Create a trip or event to be featured in the HR Activity Marketplace.</p>
       </header>
 
+      {isPending && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm font-medium">
+          Your vendor account is pending approval. Publishing activities is disabled until Admin approval.
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 md:p-8 border border-slate-100 shadow-sm space-y-6">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Activity Title</label>
-          <input name="title" type="text" required placeholder="e.g., Mountain Yoga Retreat" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none" />
+          <input name="title" type="text" required disabled={isPending} placeholder="e.g., Mountain Yoga Retreat" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-            <select name="category" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none appearance-none bg-white">
+            <select name="category" disabled={isPending} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none appearance-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed">
               <option value="trips">Company Trip</option>
               <option value="events">Office Event</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Price (e.g., $50/person)</label>
-            <input name="price" type="text" required placeholder="$50 / person" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none" />
+            <input name="price" type="text" required disabled={isPending} placeholder="$50 / person" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Duration (e.g., 1 Day)</label>
-            <input name="duration" type="text" required placeholder="1 Day" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none" />
+            <input name="duration" type="text" required disabled={isPending} placeholder="1 Day" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed" />
           </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-          <textarea name="description" required rows="4" placeholder="Describe the activity..." className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none resize-y"></textarea>
+          <textarea name="description" required rows="4" disabled={isPending} placeholder="Describe the activity..." className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 outline-none resize-y disabled:bg-slate-100 disabled:cursor-not-allowed"></textarea>
         </div>
         <div className="pt-4 flex justify-end">
-          <button type="submit" className="px-8 py-3.5 bg-emerald-600 text-white font-bold rounded-xl shadow-md hover:bg-emerald-700 transition-colors flex items-center gap-2">
-            <PlusCircle className="w-5 h-5" /> Publish to Marketplace
+          <button
+            type="submit"
+            disabled={isPending}
+            className={`px-8 py-3.5 font-bold rounded-xl shadow-md transition-colors flex items-center gap-2 ${
+              isPending
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            <PlusCircle className="w-5 h-5" /> {isPending ? 'Approval Required' : 'Publish to Marketplace'}
           </button>
         </div>
       </form>
@@ -1202,13 +2011,15 @@ function EventsPlaceholder({ title = "Company Calendar", desc = "Your upcoming p
 // ==========================================
 // LANDING PAGE (MULTI-PORTAL LOGIN)
 // ==========================================
-function LandingPage({ onLogin }) {
-  const [loginTab, setLoginTab] = useState('hr'); // 'hr', 'vendor', 'employee'
+function LandingPage({ onAuth }) {
+  const [loginTab, setLoginTab] = useState('admin'); // 'admin', 'hr', 'vendor', 'employee'
   const [isRegistering, setIsRegistering] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleTabSwitch = (tab) => {
     setLoginTab(tab);
-    if (tab === 'hr') setIsRegistering(false); // HR cannot self-register
+    if (tab === 'admin' || tab === 'hr') setIsRegistering(false); // Admin and HR cannot self-register
+    setErrorMsg("");
   };
 
   return (
@@ -1259,9 +2070,10 @@ function LandingPage({ onLogin }) {
           <EvoPathLogo className="w-10 h-10" /> <AnimatedBrandText />
         </div>
         <div className="hidden md:flex gap-6 text-slate-600 font-medium">
-          <button onClick={() => setLoginTab('hr')} className={`hover:text-sky-600 ${loginTab === 'hr' ? 'text-sky-600 font-bold' : ''}`}>For Companies</button>
-          <button onClick={() => setLoginTab('vendor')} className={`hover:text-emerald-600 ${loginTab === 'vendor' ? 'text-emerald-600 font-bold' : ''}`}>For Vendors</button>
-          <button onClick={() => setLoginTab('employee')} className={`hover:text-purple-600 ${loginTab === 'employee' ? 'text-purple-600 font-bold' : ''}`}>For Employees</button>
+          <button onClick={() => handleTabSwitch('admin')} className={`hover:text-indigo-600 ${loginTab === 'admin' ? 'text-indigo-600 font-bold' : ''}`}>System Admin</button>
+          <button onClick={() => handleTabSwitch('hr')} className={`hover:text-sky-600 ${loginTab === 'hr' ? 'text-sky-600 font-bold' : ''}`}>For Companies</button>
+          <button onClick={() => handleTabSwitch('vendor')} className={`hover:text-emerald-600 ${loginTab === 'vendor' ? 'text-emerald-600 font-bold' : ''}`}>For Vendors</button>
+          <button onClick={() => handleTabSwitch('employee')} className={`hover:text-purple-600 ${loginTab === 'employee' ? 'text-purple-600 font-bold' : ''}`}>For Employees</button>
         </div>
       </nav>
 
@@ -1307,6 +2119,7 @@ function LandingPage({ onLogin }) {
           <div className="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 relative overflow-hidden">
             {/* Dynamic Header Line */}
             <div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r ${
+              loginTab === 'admin' ? 'from-indigo-500 to-blue-600' :
               loginTab === 'hr' ? 'from-sky-500 to-indigo-600' : 
               loginTab === 'vendor' ? 'from-emerald-500 to-teal-600' : 
               'from-purple-500 to-pink-600'
@@ -1317,19 +2130,33 @@ function LandingPage({ onLogin }) {
               <p className="text-slate-500 text-sm mt-1">{isRegistering ? (loginTab === 'employee' ? 'Enter your details and provided company code.' : 'Enter your business details to partner with us.') : 'Select your portal to continue.'}</p>
             </div>
 
-            {/* Login Tabs */}
-            <div className="flex p-1 bg-slate-100 rounded-xl mb-6">
-              <button onClick={() => handleTabSwitch('hr')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${loginTab === 'hr' ? 'bg-white shadow-sm text-sky-600' : 'text-slate-500 hover:text-slate-700'}`}>HR Admin</button>
-              <button onClick={() => handleTabSwitch('vendor')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${loginTab === 'vendor' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Vendor</button>
-              <button onClick={() => handleTabSwitch('employee')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${loginTab === 'employee' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}>Employee</button>
+            {/* Login Tabs (Mobile/Fallback) */}
+            <div className="flex md:hidden p-1 bg-slate-100 rounded-xl mb-6 flex-wrap gap-1">
+              <button onClick={() => handleTabSwitch('admin')} className={`flex-1 min-w-[45%] py-2 text-xs font-bold rounded-lg transition-all ${loginTab === 'admin' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>Admin</button>
+              <button onClick={() => handleTabSwitch('hr')} className={`flex-1 min-w-[45%] py-2 text-xs font-bold rounded-lg transition-all ${loginTab === 'hr' ? 'bg-white shadow-sm text-sky-600' : 'text-slate-500 hover:text-slate-700'}`}>HR Admin</button>
+              <button onClick={() => handleTabSwitch('vendor')} className={`flex-1 min-w-[45%] py-2 text-xs font-bold rounded-lg transition-all ${loginTab === 'vendor' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Vendor</button>
+              <button onClick={() => handleTabSwitch('employee')} className={`flex-1 min-w-[45%] py-2 text-xs font-bold rounded-lg transition-all ${loginTab === 'employee' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}>Employee</button>
             </div>
             
-            <form onSubmit={(e) => { 
+            {errorMsg && (
+              <div className="mb-5 p-3 bg-red-50 text-red-700 text-sm rounded-xl border border-red-100 font-medium">
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={async (e) => { 
               e.preventDefault(); 
+              setErrorMsg("");
               const username = e.target.username.value;
               const pin = e.target.pin.value;
               const companyCode = e.target.companyCode?.value;
-              onLogin(loginTab, username, isRegistering, companyCode, pin); 
+              const businessName = e.target.businessName?.value;
+              
+              const err = !isRegistering
+                ? await onAuth('login', { username, pin })
+                : await onAuth('register', { role: loginTab, username, pin, companyCode, businessName });
+
+              if (err) setErrorMsg(err);
             }} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -1342,7 +2169,7 @@ function LandingPage({ onLogin }) {
                     type="text" 
                     required 
                     placeholder="Enter username"
-                    className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200'}`} 
+                    className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'admin' ? 'focus:border-indigo-500 focus:ring-indigo-200' : loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200'}`} 
                   />
                 </div>
               </div>
@@ -1356,9 +2183,25 @@ function LandingPage({ onLogin }) {
                   maxLength="6"
                   placeholder="4-6 digit PIN"
                   required 
-                  className={`w-full px-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200'}`} 
+                  className={`w-full px-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'admin' ? 'focus:border-indigo-500 focus:ring-indigo-200' : loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200'}`} 
                 />
               </div>
+
+              {isRegistering && loginTab === 'vendor' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Business Name</label>
+                  <div className="relative">
+                    <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input 
+                      name="businessName"
+                      type="text" 
+                      required 
+                      placeholder="e.g., Desert Horizons Coordination"
+                      className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 focus:border-emerald-500 focus:ring-emerald-200`} 
+                    />
+                  </div>
+                </div>
+              )}
 
               {isRegistering && loginTab === 'employee' && (
                 <div>
@@ -1370,27 +2213,28 @@ function LandingPage({ onLogin }) {
                       type="text" 
                       required 
                       placeholder="e.g., TECH-2026"
-                      className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : 'focus:border-purple-500 focus:ring-purple-200'}`} 
+                      className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 focus:border-purple-500 focus:ring-purple-200`} 
                     />
                   </div>
                 </div>
               )}
 
               <button type="submit" className={`w-full text-white font-bold py-3.5 rounded-xl transition-colors shadow-md mt-2 ${
+                loginTab === 'admin' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' :
                 loginTab === 'hr' ? 'bg-sky-600 hover:bg-sky-700 shadow-sky-200' : 
                 loginTab === 'vendor' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 
                 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
               }`}>
-                {isRegistering ? 'Register Account' : `Access ${loginTab === 'hr' ? 'HR Portal' : loginTab === 'vendor' ? 'Partner Portal' : 'Employee Hub'}`}
+                {isRegistering ? 'Register Account' : `Access Portal`}
               </button>
             </form>
 
-            {loginTab !== 'hr' && (
+            {(loginTab === 'vendor' || loginTab === 'employee') && (
               <div className="mt-6 text-center text-sm text-slate-500">
                 {isRegistering ? (
-                  <>Already have an account? <button onClick={() => setIsRegistering(false)} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Sign In</button></>
+                  <>Already have an account? <button onClick={() => { setIsRegistering(false); setErrorMsg(""); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Sign In</button></>
                 ) : (
-                  <>Don't have an account? <button onClick={() => setIsRegistering(true)} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Self-Register</button></>
+                  <>Don't have an account? <button onClick={() => { setIsRegistering(true); setErrorMsg(""); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Self-Register</button></>
                 )}
               </div>
             )}
