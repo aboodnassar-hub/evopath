@@ -181,27 +181,17 @@ const INITIAL_ACTIVITIES = [
 export default function App() {
   const [user, setUser] = useState(null);
   const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
-  const [opportunities, setOpportunities] = useState([]); 
-
-  // Mock User Database (stored in localStorage for testing)
-  const [usersDB, setUsersDB] = useState(() => {
-    try {
-      const saved = localStorage.getItem('evoPathUsers');
-      if (saved) return JSON.parse(saved);
-    } catch (e) { console.error(e); }
-    
-    // Default Admin/Demo Users
-    return [
-      { username: 'admin', pin: '0000', role: 'admin', name: 'System Admin' },
-      { username: 'Sarah_Jenkins', pin: '1234', role: 'hr', company: 'TechNova Solutions', companyCode: 'TECH-2026', name: 'Sarah Jenkins', cultureScore: 85, volunteerHours: 120 },
-      { username: 'Omar_Tariq', pin: '1234', role: 'vendor', company: 'Desert Horizons Coordination', name: 'Omar Tariq', activeTrips: 4, rating: 4.9, status: 'approved' },
-      { username: 'Alex_Chen', pin: '1234', role: 'employee', company: 'TechNova Solutions', companyCode: 'TECH-2026', name: 'Alex Chen', personalVolunteerHours: 14, culturePoints: 350 }
-    ];
-  });
+  const [opportunities, setOpportunities] = useState([]);
+  const [usersDB, setUsersDB] = useState([]);
 
   useEffect(() => {
-    localStorage.setItem('evoPathUsers', JSON.stringify(usersDB));
-  }, [usersDB]);
+    try {
+      const savedUser = localStorage.getItem("user");
+      if (savedUser) setUser(JSON.parse(savedUser));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   const handleAuth = async (actionOrRole, payloadOrUsername, isRegisteringArg = false, companyCodeArg = "", pinArg = "", businessNameArg = "") => {
     let role = actionOrRole;
@@ -211,7 +201,6 @@ export default function App() {
     let companyCode = companyCodeArg;
     let businessName = businessNameArg;
 
-    // Support the current LandingPage style
     if (actionOrRole === "login" || actionOrRole === "register") {
       const payload = payloadOrUsername || {};
       isRegistering = actionOrRole === "register";
@@ -290,50 +279,29 @@ export default function App() {
       return null;
     } catch (error) {
       console.error(error);
-      // Fallback local logic to maintain UI function if backend is down
-      if (!isRegistering) {
-        const existingUser = usersDB.find(u => u.username.toLowerCase() === username.toLowerCase());
-        if (!existingUser) return "Account not found. Please check your username or register.";
-        if (existingUser.pin !== pin) return "Incorrect PIN. Please try again.";
-        if (existingUser.role === "vendor" && existingUser.status === "pending") return "Your account is awaiting admin approval.";
-        setUser(existingUser);
-        return null;
-      } else {
-        if (usersDB.some(u => u.username.toLowerCase() === username.toLowerCase())) return "Username already exists.";
-        const displayName = username.replace(/_/g, ' ');
-        let newUser = { username, pin, role, name: displayName };
-        if (role === 'vendor') {
-          if (!businessName) return "Business name is required.";
-          newUser = { ...newUser, company: businessName, activeTrips: 0, rating: 0, status: 'pending' };
-        } else if (role === 'employee') {
-          if (!companyCode) return "Company code is required.";
-          const hrAdmin = usersDB.find(u => u.role === 'hr' && u.companyCode === companyCode);
-          if (!hrAdmin) return "Invalid Company Code.";
-          newUser = { ...newUser, companyCode, company: hrAdmin.company, personalVolunteerHours: 0, culturePoints: 0 };
-        }
-        setUsersDB([...usersDB, newUser]);
-        alert(role === "vendor" ? "Vendor registration submitted successfully. Your account is pending admin approval." : "Account created successfully! Please sign in now.");
-        return null;
-      }
+      return "Cannot connect to backend. Please make sure the backend URL is correct and the server is running.";
     }
   };
 
-const handleLogout = () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-  setUser(null);
-};
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+    setUsersDB([]);
+  };
 
   if (!user) {
     return <LandingPage onAuth={handleAuth} />;
   }
 
-  // Route to the correct portal based exclusively on the backend-enforced role
   if (user.role === 'admin') return <AdminPortal user={user} onLogout={handleLogout} usersDB={usersDB} setUsersDB={setUsersDB} />;
   if (user.role === 'hr') return <HrPortal user={user} onLogout={handleLogout} activities={activities} setActivities={setActivities} setOpportunities={setOpportunities} usersDB={usersDB} setUsersDB={setUsersDB} />;
   if (user.role === 'vendor') return <VendorPortal user={user} onLogout={handleLogout} activities={activities} setActivities={setActivities} />;
   if (user.role === 'employee') return <EmployeePortal user={user} onLogout={handleLogout} opportunities={opportunities} />;
+
+  return <LandingPage onAuth={handleAuth} />;
 }
+
 
 // ==========================================
 // 0. ADMIN PORTAL (SYSTEM MANAGER)
@@ -410,6 +378,50 @@ function AdminManageHR({ usersDB, setUsersDB }) {
   const [generatedCredentials, setGeneratedCredentials] = useState(null);
   const { resetData, setResetData, resetError, handleResetPin } = usePinReset();
   const [companySearch, setCompanySearch] = useState("");
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
+
+  const fetchCompanies = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setMsg("Error: Admin token not found. Please login again.");
+      return;
+    }
+
+    try {
+      setIsLoadingCompanies(true);
+      const response = await fetch(`${API_BASE_URL}/admin/hrs`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMsg(`Error: ${data.message || "Failed to load active companies."}`);
+        return;
+      }
+
+      const hrs = data.hrs || [];
+      setUsersDB((prev) => {
+        const withoutHrs = prev.filter((u) => u.role !== "hr");
+        return [...withoutHrs, ...hrs];
+      });
+      setMsg("");
+    } catch (error) {
+      console.error(error);
+      setMsg("Error: Cannot load companies from backend.");
+    } finally {
+      setIsLoadingCompanies(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCompanies();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreateHR = async (e) => {
     e.preventDefault();
@@ -449,8 +461,8 @@ function AdminManageHR({ usersDB, setUsersDB }) {
       const credentials = data.credentials;
 
       setUsersDB((prev) => {
-        const alreadyExists = prev.some((u) => u._id === createdHr._id || u.username === createdHr.username);
-        return alreadyExists ? prev : [...prev, createdHr];
+        const withoutDuplicate = prev.filter((u) => u._id !== createdHr._id && u.username !== createdHr.username);
+        return [...withoutDuplicate, createdHr];
       });
 
       setGeneratedCredentials({
@@ -463,19 +475,10 @@ function AdminManageHR({ usersDB, setUsersDB }) {
 
       setMsg(`Success: HR account generated for ${createdHr.company}. Share the credentials securely with the HR representative.`);
       e.target.reset();
+      fetchCompanies();
     } catch (error) {
       console.error(error);
-      // Fallback UI processing
-      const base = `hr_${company.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 10)}`;
-      const username = `${base}_${Math.floor(1000 + Math.random() * 9000)}`;
-      const pin = String(Math.floor(100000 + Math.random() * 900000));
-      const companyCode = `${company.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      
-      const newHr = { username, pin, role: 'hr', company, companyCode, name, cultureScore: 0, volunteerHours: 0 };
-      setUsersDB([...usersDB, newHr]);
-      setGeneratedCredentials({ username, pin, companyCode, company, name });
-      setMsg(`Success: HR account generated for ${company} (Local Mode).`);
-      e.target.reset();
+      setMsg("Error: Cannot connect to backend. HR account was not created.");
     }
   };
 
@@ -493,12 +496,12 @@ function AdminManageHR({ usersDB, setUsersDB }) {
     <div className="max-w-5xl mx-auto space-y-8">
       <header>
         <h1 className="text-3xl font-bold text-slate-900">Manage Companies (HR)</h1>
-        <p className="text-slate-500 mt-1">Create top-level HR accounts through the backend. The system generates username, PIN, and company code automatically.</p>
+        <p className="text-slate-500 mt-1">Create and manage HR accounts from MongoDB, so data appears on every device.</p>
       </header>
 
       <form onSubmit={handleCreateHR} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
         <h2 className="text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Generate New HR Account</h2>
-        {msg && <div className={`p-3 text-sm font-bold rounded-lg ${msg.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{msg}</div>}
+        {msg && <div className={`p-3 text-sm font-bold rounded-lg ${msg.startsWith('Error') ? 'bg-red-50 text-red-700' : msg.startsWith('Success') ? 'bg-green-50 text-green-700' : 'bg-sky-50 text-sky-700'}`}>{msg}</div>}
 
         {generatedCredentials && (
           <div className="p-4 rounded-2xl border border-indigo-100 bg-indigo-50">
@@ -517,7 +520,7 @@ function AdminManageHR({ usersDB, setUsersDB }) {
                 <p className="font-mono font-bold text-indigo-600">{generatedCredentials.companyCode}</p>
               </div>
             </div>
-            <p className="text-xs text-indigo-700 mt-3">Note: In production, show the PIN once only and store it hashed on the backend.</p>
+            <p className="text-xs text-indigo-700 mt-3">Note: The PIN is shown once only. Use Reset PIN if it is forgotten.</p>
           </div>
         )}
 
@@ -546,19 +549,26 @@ function AdminManageHR({ usersDB, setUsersDB }) {
               {filteredHrList.length}/{hrList.length}
             </span>
           </h2>
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={companySearch}
-              onChange={(e) => setCompanySearch(e.target.value)}
-              placeholder="Search company, HR, username, code..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm"
-            />
+          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={companySearch}
+                onChange={(e) => setCompanySearch(e.target.value)}
+                placeholder="Search company, HR, username, code..."
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm"
+              />
+            </div>
+            <button onClick={fetchCompanies} className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm">
+              Refresh
+            </button>
           </div>
         </div>
-        {filteredHrList.length === 0 ? (
-          <p className="text-slate-500 italic py-4">No companies match your search.</p>
+        {isLoadingCompanies ? (
+          <p className="text-slate-500 italic py-4">Loading companies...</p>
+        ) : filteredHrList.length === 0 ? (
+          <p className="text-slate-500 italic py-4">No companies found.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredHrList.map((hr, idx) => (
@@ -592,25 +602,16 @@ function AdminManageHR({ usersDB, setUsersDB }) {
   );
 }
 
+
 function AdminApproveVendors({ usersDB, setUsersDB }) {
   const [pendingVendors, setPendingVendors] = useState([]);
+  const [activeVendors, setActiveVendors] = useState([]);
   const [msg, setMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { resetData, setResetData, resetError, handleResetPin } = usePinReset();
   const [vendorSearch, setVendorSearch] = useState("");
 
-  // Derive active vendors directly from the shared usersDB to ensure it always displays properly
-  const activeVendors = usersDB.filter(u => u.role === 'vendor' && u.status === 'active');
-  const normalizedVendorSearch = vendorSearch.trim().toLowerCase();
-  const filteredActiveVendors = normalizedVendorSearch
-    ? activeVendors.filter((vendor) =>
-        [vendor.company, vendor.name, vendor.username]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(normalizedVendorSearch))
-      )
-    : activeVendors;
-
-  const fetchPendingVendors = async () => {
+  const fetchVendors = async () => {
     const token = localStorage.getItem("token");
 
     if (!token) {
@@ -620,34 +621,61 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
 
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_BASE_URL}/admin/pending-vendors`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const [pendingResponse, activeResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/pending-vendors`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE_URL}/admin/vendors`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
 
-      const data = await response.json();
+      const pendingData = await pendingResponse.json();
+      const activeData = await activeResponse.json();
 
-      if (!response.ok) {
-        setMsg(`Error: ${data.message || "Failed to load pending vendors."}`);
+      if (!pendingResponse.ok) {
+        setMsg(`Error: ${pendingData.message || "Failed to load pending vendors."}`);
         return;
       }
 
-      setPendingVendors(data.vendors || []);
+      if (!activeResponse.ok) {
+        setMsg(`Error: ${activeData.message || "Failed to load active vendors."}`);
+        return;
+      }
+
+      const pending = pendingData.vendors || [];
+      const active = activeData.vendors || [];
+
+      setPendingVendors(pending);
+      setActiveVendors(active);
+      setUsersDB((prev) => {
+        const withoutVendors = prev.filter((u) => u.role !== "vendor");
+        return [...withoutVendors, ...pending, ...active];
+      });
       setMsg("");
     } catch (error) {
-      console.warn("Backend unavailable, using local usersDB state for pending vendors.");
-      setPendingVendors(usersDB.filter(u => u.role === 'vendor' && u.status === 'pending'));
+      console.error(error);
+      setMsg("Error: Cannot load vendors from backend.");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-  fetchPendingVendors();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [usersDB]);
+    fetchVendors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const normalizedVendorSearch = vendorSearch.trim().toLowerCase();
+  const filteredActiveVendors = normalizedVendorSearch
+    ? activeVendors.filter((vendor) =>
+        [vendor.company, vendor.name, vendor.username]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedVendorSearch))
+      )
+    : activeVendors;
 
   const handleApprove = async (username) => {
     const token = localStorage.getItem("token");
@@ -674,28 +702,11 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
         return;
       }
 
-      const approvedVendor = data.vendor;
-
-      setPendingVendors((prev) =>
-        prev.filter((vendor) => vendor.username !== username)
-      );
-
-      // Instantly update the local database so it appears in the Active Vendors list
-      setUsersDB((prev) => {
-        const exists = prev.some((v) => v.username === username);
-        if (exists) {
-          return prev.map(v => v.username === username ? { ...v, status: 'active' } : v);
-        } else if (approvedVendor) {
-          return [{ ...approvedVendor, status: 'active' }, ...prev];
-        }
-        return prev;
-      });
-
       setMsg("Success: Vendor approved successfully.");
+      fetchVendors();
     } catch (error) {
-      console.warn("Backend unavailable, processing vendor approval locally.");
-      setUsersDB(prev => prev.map(v => v.username === username ? { ...v, status: 'active' } : v));
-      setMsg("Success: Vendor approved successfully (Local Mode).");
+      console.error(error);
+      setMsg("Error: Cannot connect to backend. Vendor was not approved.");
     }
   };
 
@@ -703,7 +714,7 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
     <div className="max-w-5xl mx-auto space-y-8">
       <header>
         <h1 className="text-3xl font-bold text-slate-900">Vendor Management</h1>
-        <p className="text-slate-500 mt-1">Review pending requests and manage active vendors from the backend.</p>
+        <p className="text-slate-500 mt-1">Review pending requests and manage active vendors from MongoDB.</p>
       </header>
 
       {msg && (
@@ -721,7 +732,7 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
             </span>
           </h2>
           <button
-            onClick={fetchPendingVendors}
+            onClick={fetchVendors}
             className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm"
           >
             Refresh
@@ -729,7 +740,7 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
         </div>
 
         {isLoading ? (
-          <p className="text-slate-500 italic py-4">Loading pending vendors...</p>
+          <p className="text-slate-500 italic py-4">Loading vendors...</p>
         ) : pendingVendors.length === 0 ? (
           <p className="text-slate-500 italic py-4">No pending vendors at this time.</p>
         ) : (
@@ -810,6 +821,7 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
     </div>
   );
 }
+
 
 // ==========================================
 // 1. HR PORTAL (COMPANY ADMIN)
