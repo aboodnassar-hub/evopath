@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, Map, Heart, Calendar, Users, 
   TrendingUp, LogOut, Search, Star, Shield, 
-  Award, ChevronRight, Menu, X, Sparkles,
+  Zap, Award, ChevronRight, Menu, X, Sparkles,
   Vote, CheckCircle, BarChart3, MessageSquare,
   PlusCircle, Send, DollarSign, AlignLeft,
-  FileText, CheckSquare, Clock, Trash2, Key
+  Bell, FileText, CheckSquare, Clock, Trash2, Key
 } from 'lucide-react';
 
 const EvoPathLogo = ({ className = "w-8 h-8", imgUrl }) => (
@@ -106,19 +106,64 @@ const INITIAL_ACTIVITIES = [
 export default function App() {
   const [user, setUser] = useState(null);
   const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
-  const [opportunities, setOpportunities] = useState([]); // Separate state for internal volunteer ops
+  const [opportunities, setOpportunities] = useState([]);
 
-  const handleLogin = (role, username, isRegistering, companyCode) => {
-    // Format the inputted username to look nice on the dashboard (e.g., "Sarah_Jenkins" -> "Sarah Jenkins")
-    const displayName = username ? username.replace(/_/g, ' ') : "User";
-    const displayCompany = companyCode ? `Company [${companyCode}]` : (role === 'vendor' ? "Desert Horizons Coordination" : "TechNova Solutions");
+  // Mock User Database (stored in localStorage for testing)
+  const [usersDB, setUsersDB] = useState(() => {
+    try {
+      const saved = localStorage.getItem('evoPathUsers');
+      if (saved) return JSON.parse(saved);
+    } catch (e) { console.error(e); }
+    
+    // Default Admin/Demo Users
+    return [
+      { username: 'Sarah_Jenkins', pin: '1234', role: 'hr', company: 'TechNova Solutions', companyCode: 'TECH-2026', name: 'Sarah Jenkins', cultureScore: 85, volunteerHours: 120 },
+      { username: 'Omar_Tariq', pin: '1234', role: 'vendor', company: 'Desert Horizons Coordination', name: 'Omar Tariq', activeTrips: 4, rating: 4.9 },
+      { username: 'Alex_Chen', pin: '1234', role: 'employee', company: 'TechNova Solutions', companyCode: 'TECH-2026', name: 'Alex Chen', personalVolunteerHours: 14, culturePoints: 350 }
+    ];
+  });
 
-    if (role === 'hr') {
-      setUser({ role: 'hr', name: displayName, company: displayCompany, title: "HR Director", cultureScore: 85, volunteerHours: 120 });
-    } else if (role === 'vendor') {
-      setUser({ role: 'vendor', name: displayName, company: isRegistering ? "New Vendor LLC" : "Desert Horizons Coordination", title: "Vendor Admin", activeTrips: 4, rating: 4.9 });
-    } else if (role === 'employee') {
-      setUser({ role: 'employee', name: displayName, company: displayCompany, title: "Employee", personalVolunteerHours: 14, culturePoints: 350 });
+  useEffect(() => {
+    localStorage.setItem('evoPathUsers', JSON.stringify(usersDB));
+  }, [usersDB]);
+
+  const handleLogin = (role, username, pin, isRegistering, companyCode) => {
+    const trimmedUser = username.trim();
+    
+    if (isRegistering) {
+      if (usersDB.some(u => u.username.toLowerCase() === trimmedUser.toLowerCase())) {
+        return "Username already exists. Please choose another or sign in.";
+      }
+      if (role === 'employee' && !companyCode) {
+        return "Company code is required for employee registration.";
+      }
+
+      const displayName = trimmedUser.replace(/_/g, ' ');
+      let newUser = { username: trimmedUser, pin, role, name: displayName };
+
+      if (role === 'vendor') {
+        newUser = { ...newUser, company: `${displayName} LLC`, activeTrips: 0, rating: 5.0 };
+      } else if (role === 'employee') {
+        const hrAdmin = usersDB.find(u => u.role === 'hr' && u.companyCode === companyCode);
+        if (!hrAdmin) return "Invalid Company Code. Please check with your HR department.";
+        
+        newUser = { ...newUser, companyCode, company: hrAdmin.company, personalVolunteerHours: 0, culturePoints: 0 };
+      }
+
+      setUsersDB([...usersDB, newUser]);
+      setUser(newUser);
+      return null; // Null means success
+    } else {
+      // Handle Sign In
+      const existingUser = usersDB.find(u => u.username.toLowerCase() === trimmedUser.toLowerCase() && u.role === role);
+      if (!existingUser) {
+        return "Account not found in this portal. Please check your username or select Self-Register.";
+      }
+      if (existingUser.pin !== pin) {
+        return "Incorrect PIN. Please try again.";
+      }
+      setUser(existingUser);
+      return null;
     }
   };
 
@@ -176,6 +221,9 @@ function HrDashboard({ user, setTab }) {
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Welcome back, {user.name.split(' ')[0]} 👋</h1>
         <p className="text-slate-500 mt-1">Here is {user.company}'s culture overview.</p>
+        <p className="text-xs text-sky-600 font-bold uppercase tracking-wider mt-2 border border-sky-200 inline-block px-2 py-1 rounded-md bg-sky-50">
+          Company Code: {user.companyCode}
+        </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1133,10 +1181,12 @@ function EventsPlaceholder({ title = "Company Calendar", desc = "Your upcoming p
 function LandingPage({ onLogin }) {
   const [loginTab, setLoginTab] = useState('hr'); // 'hr', 'vendor', 'employee'
   const [isRegistering, setIsRegistering] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleTabSwitch = (tab) => {
     setLoginTab(tab);
     if (tab === 'hr') setIsRegistering(false); // HR cannot self-register
+    setErrorMsg("");
   };
 
   return (
@@ -1187,9 +1237,9 @@ function LandingPage({ onLogin }) {
           <EvoPathLogo className="w-10 h-10" /> <AnimatedBrandText />
         </div>
         <div className="hidden md:flex gap-6 text-slate-600 font-medium">
-          <button onClick={() => setLoginTab('hr')} className={`hover:text-sky-600 ${loginTab === 'hr' ? 'text-sky-600 font-bold' : ''}`}>For Companies</button>
-          <button onClick={() => setLoginTab('vendor')} className={`hover:text-emerald-600 ${loginTab === 'vendor' ? 'text-emerald-600 font-bold' : ''}`}>For Vendors</button>
-          <button onClick={() => setLoginTab('employee')} className={`hover:text-purple-600 ${loginTab === 'employee' ? 'text-purple-600 font-bold' : ''}`}>For Employees</button>
+          <button onClick={() => handleTabSwitch('hr')} className={`hover:text-sky-600 ${loginTab === 'hr' ? 'text-sky-600 font-bold' : ''}`}>For Companies</button>
+          <button onClick={() => handleTabSwitch('vendor')} className={`hover:text-emerald-600 ${loginTab === 'vendor' ? 'text-emerald-600 font-bold' : ''}`}>For Vendors</button>
+          <button onClick={() => handleTabSwitch('employee')} className={`hover:text-purple-600 ${loginTab === 'employee' ? 'text-purple-600 font-bold' : ''}`}>For Employees</button>
         </div>
       </nav>
 
@@ -1252,11 +1302,20 @@ function LandingPage({ onLogin }) {
               <button onClick={() => handleTabSwitch('employee')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${loginTab === 'employee' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}>Employee</button>
             </div>
             
+            {errorMsg && (
+              <div className="mb-5 p-3 bg-red-50 text-red-700 text-sm rounded-xl border border-red-100 font-medium">
+                {errorMsg}
+              </div>
+            )}
+
             <form onSubmit={(e) => { 
               e.preventDefault(); 
+              setErrorMsg("");
               const username = e.target.username.value;
+              const pin = e.target.pin.value;
               const companyCode = e.target.companyCode?.value;
-              onLogin(loginTab, username, isRegistering, companyCode); 
+              const err = onLogin(loginTab, username, pin, isRegistering, companyCode); 
+              if (err) setErrorMsg(err);
             }} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -1276,6 +1335,7 @@ function LandingPage({ onLogin }) {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Secure PIN</label>
                 <input 
+                  name="pin"
                   type="password" 
                   pattern="[0-9]*"
                   inputMode="numeric"
@@ -1315,9 +1375,9 @@ function LandingPage({ onLogin }) {
             {loginTab !== 'hr' && (
               <div className="mt-6 text-center text-sm text-slate-500">
                 {isRegistering ? (
-                  <>Already have an account? <button onClick={() => setIsRegistering(false)} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Sign In</button></>
+                  <>Already have an account? <button onClick={() => { setIsRegistering(false); setErrorMsg(""); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Sign In</button></>
                 ) : (
-                  <>Don't have an account? <button onClick={() => setIsRegistering(true)} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Self-Register</button></>
+                  <>Don't have an account? <button onClick={() => { setIsRegistering(true); setErrorMsg(""); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Self-Register</button></>
                 )}
               </div>
             )}
