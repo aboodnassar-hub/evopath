@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, Map, Heart, Calendar, Users, 
   TrendingUp, LogOut, Search, Star, Shield, 
-  Zap, Award, ChevronRight, Menu, X, Sparkles,
+  Award, ChevronRight, Menu, X, Sparkles,
   Vote, CheckCircle, BarChart3, MessageSquare,
   PlusCircle, Send, DollarSign, AlignLeft,
-  Bell, FileText, CheckSquare, Clock, Trash2, Key
+  FileText, CheckSquare, Clock, Trash2, Key
 } from 'lucide-react';
 
 const EvoPathLogo = ({ className = "w-8 h-8", imgUrl }) => (
