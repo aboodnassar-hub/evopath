@@ -645,8 +645,9 @@ function AdminApproveVendors({ usersDB, setUsersDB }) {
   };
 
   useEffect(() => {
-    fetchPendingVendors();
-  }, [usersDB]);
+  fetchPendingVendors();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [usersDB]);
 
   const handleApprove = async (username) => {
     const token = localStorage.getItem("token");
