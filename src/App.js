@@ -8,7 +8,7 @@ import {
   FileText, CheckSquare, Clock, Trash2, Key, ShieldCheck
 } from 'lucide-react';
 
-const API_BASE_URL = "https://evopath-backend.onrender.com/";
+const API_BASE_URL = "https://evopath-backend.onrender.com";
 
 const EvoPathLogo = ({ className = "w-8 h-8", imgUrl }) => (
   <div className={`relative shrink-0 rounded-lg overflow-hidden shadow-sm border border-sky-100 group bg-white ${className}`}>
