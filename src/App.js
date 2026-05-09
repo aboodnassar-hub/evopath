@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, Map, Heart, Calendar, Users, 
   TrendingUp, LogOut, Search, Star, Shield, 
-  Zap, Award, ChevronRight, Menu, X, Sparkles,
+  Award, ChevronRight, Menu, X, Sparkles,
   Vote, CheckCircle, BarChart3, MessageSquare,
   PlusCircle, Send, DollarSign, AlignLeft,
-  Bell, FileText, CheckSquare, Clock, Trash2, Key, ShieldCheck
+  FileText, CheckSquare, Clock, Trash2, Key, ShieldCheck
 } from 'lucide-react';
 
 const API_BASE_URL = "https://evopath-backend.onrender.com/";
