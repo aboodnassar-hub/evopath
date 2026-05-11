@@ -1,70 +1,131 @@
-# Getting Started with Create React App
+# EvoPath
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+EvoPath is a multi-portal corporate culture platform that connects companies, vendors, and employees around team activities, volunteer opportunities, custom requests, bookings, and employee engagement.
+
+The app is built with React and Tailwind CSS. By default, it expects a backend API running locally at `http://localhost:5000`.
+
+## Product Idea
+
+EvoPath helps HR teams build stronger company culture by giving them one place to:
+
+- Discover and book corporate activities from approved vendors.
+- Create volunteer opportunities for employees.
+- Manage employees registered under their company code.
+- Submit custom activity requests.
+- Track bookings, volunteer participation, and engagement.
+- Let employees vote on team activities through polling.
+
+The platform supports four main roles:
+
+- `Admin`: manages HR company accounts, approves vendors, and views platform stats.
+- `HR`: manages employees, books activities, creates volunteer opportunities, and submits custom requests.
+- `Vendor`: publishes activities, reviews bookings, and responds to custom requests.
+- `Employee`: joins volunteer opportunities, views impact, and participates in polls.
+
+## Features
+
+- Role-based portal routing after login.
+- Admin dashboard with company, vendor, employee, and pending vendor stats.
+- HR company management with generated company codes.
+- Vendor approval flow.
+- Activity marketplace with booking requests.
+- Vendor booking approval and rejection.
+- Custom request flow between HR and vendors.
+- Volunteer opportunity creation, joining, and completion tracking.
+- Employee impact dashboard with culture points and volunteer hours.
+- Shared sidebar, mobile header, activity cards, and reset PIN modal.
+
+## Tech Stack
+
+- React
+- Tailwind CSS
+- Lucide React icons
+- Create React App
+- Backend API expected at `http://localhost:5000`
+
+## Project Structure
+
+```text
+src/
+  App.js
+  components/
+    shared.jsx
+  features/
+    admin/
+    employee/
+    hr/
+    vendor/
+  pages/
+    LandingPage.jsx
+  utils/
+    api.js
+    constants.js
+    i18n.js
+```
+
+## Getting Started
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the React development server:
+
+```bash
+npm start
+```
+
+The frontend will run at:
+
+```text
+http://localhost:3000
+```
+
+The frontend expects the backend API at:
+
+```text
+http://localhost:5000
+```
+
+To use a different backend URL, create a local `.env.local` file:
+
+```bash
+REACT_APP_API_BASE_URL=http://localhost:5000
+```
+
+You can use `.env.example` as the template.
 
 ## Available Scripts
 
-In the project directory, you can run:
+```bash
+npm start
+```
 
-### `npm start`
+Runs the app in development mode.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```bash
+npm run build
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Builds the app for production.
 
-### `npm test`
+```bash
+npm test
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Runs the test runner.
 
-### `npm run build`
+## Notes
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- This repository contains the React frontend.
+- A backend server is required for login, users, activities, bookings, custom requests, volunteer opportunities, and stats.
+- Some UI pieces are still prototype-level and can be improved by unifying shared components, moving API calls into helper modules, and replacing local placeholder logic with backend-backed data.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Suggested Next Improvements
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- Split the remaining large feature files into smaller component files.
+- Move more feature-specific API calls into small API modules.
+- Add more Arabic dictionary entries as new UI copy is introduced.
+- Add a short demo script or seed data guide once the backend setup is included.
