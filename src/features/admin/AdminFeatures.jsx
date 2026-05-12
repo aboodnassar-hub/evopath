@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, Users, TrendingUp, Search, CheckCircle, Clock, Key, ShieldCheck, XCircle, Trash2 } from 'lucide-react';
+import { Briefcase, Users, TrendingUp, Search, CheckCircle, Clock, Key, ShieldCheck, XCircle, Trash2, Star, MessageSquare } from 'lucide-react';
 import { apiRequest, getAuthToken } from '../../utils/api';
 import { Sidebar, MobileHeader, usePinReset, ResetPinModal, ConfirmActionModal } from '../../components/shared';
 
@@ -37,6 +37,8 @@ function AdminDashboard() {
     vendorCount: 0,
     employeeCount: 0,
     pendingVendorCount: 0,
+    vendorRatings: [],
+    recentFeedback: [],
   });
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [statsMsg, setStatsMsg] = useState("");
@@ -65,6 +67,8 @@ function AdminDashboard() {
         vendorCount: data.vendorCount || 0,
         employeeCount: data.employeeCount || 0,
         pendingVendorCount: data.pendingVendorCount || 0,
+        vendorRatings: data.vendorRatings || [],
+        recentFeedback: data.recentFeedback || [],
       });
     } catch (error) {
       console.error(error);
@@ -132,6 +136,76 @@ function AdminDashboard() {
           </div>
           <p className="text-4xl font-black text-slate-800">{isLoadingStats ? "..." : stats.employeeCount}</p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Vendor Ratings</h2>
+              <p className="text-sm text-slate-500">Current vendor rating summary from employee feedback.</p>
+            </div>
+            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Star className="w-5 h-5" /></div>
+          </div>
+          {stats.vendorRatings.length === 0 ? (
+            <p className="text-slate-500 italic py-4">No vendor ratings yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {stats.vendorRatings.map((vendor) => (
+                <div key={vendor.vendorId || vendor.vendorCompany} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-800">{vendor.vendorCompany || "Vendor"}</p>
+                      <p className="text-xs text-slate-500"><span>{vendor.ratingCount || 0}</span> <span>employee feedback</span></p>
+                    </div>
+                    <div className="flex items-center gap-1 text-amber-500 font-black">
+                      <Star className="w-4 h-4 fill-current" />
+                      {Number(vendor.averageRating || 0).toFixed(1)}
+                    </div>
+                  </div>
+                  {(vendor.email || vendor.phone) && (
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {vendor.email && <p className="break-all rounded-lg bg-white px-3 py-2 text-slate-600"><strong>Email:</strong> {vendor.email}</p>}
+                      {vendor.phone && <p className="rounded-lg bg-white px-3 py-2 text-slate-600"><strong>Phone:</strong> {vendor.phone}</p>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Recent Vendor Feedback</h2>
+              <p className="text-sm text-slate-500">Latest employee comments across the platform.</p>
+            </div>
+            <div className="p-2 bg-sky-100 text-sky-600 rounded-lg"><MessageSquare className="w-5 h-5" /></div>
+          </div>
+          {stats.recentFeedback.length === 0 ? (
+            <p className="text-slate-500 italic py-4">No recent feedback yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {stats.recentFeedback.map((feedback) => (
+                <div key={feedback._id || feedback.id} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-800">{feedback.vendorCompany || "Vendor"}</p>
+                      <p className="text-xs text-slate-500">{feedback.eventTitle || "Completed Event"} - {feedback.employeeName || feedback.employeeUsername || "Employee"}</p>
+                    </div>
+                    <div className="flex items-center gap-0.5 text-amber-500">
+                      {[1, 2, 3, 4, 5].map((score) => (
+                        <Star key={score} className={`w-3.5 h-3.5 ${score <= Number(feedback.rating || 0) ? "fill-current" : "text-slate-300"}`} />
+                      ))}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600 italic">"{feedback.comment || "No written comment."}"</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

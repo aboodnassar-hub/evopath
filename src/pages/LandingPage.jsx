@@ -1,17 +1,115 @@
 import React, { useState } from 'react';
-import { Briefcase, Heart, Users, Sparkles, Key } from 'lucide-react';
+import { Briefcase, CheckCircle, Heart, Users, Sparkles, Key } from 'lucide-react';
 import { EvoPathLogo, AnimatedBrandText } from '../components/shared';
-import { LanguageToggle } from '../utils/i18n';
+import { LanguageToggle, translateText, useLanguage } from '../utils/i18n';
+
+const ADMIN_PORTAL_PIN = "147862";
+const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
+
+function LandingNotice({ message }) {
+  const { language } = useLanguage();
+
+  if (!message) return null;
+
+  const isSuccess = message.startsWith("Success:");
+  const cleanMessage = translateText(message.replace(/^(Success|Error):\s*/, ""), language);
+
+  if (!isSuccess) {
+    return <p data-no-translate className="mb-4 text-sm font-bold text-red-600">{cleanMessage}</p>;
+  }
+
+  return (
+    <div data-no-translate className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-800 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 rounded-xl bg-white/70 p-2">
+          <CheckCircle className="h-5 w-5 text-emerald-600" />
+        </div>
+        <p className="text-sm font-semibold leading-relaxed">{cleanMessage}</p>
+      </div>
+    </div>
+  );
+}
+
+function FieldError({ message }) {
+  if (!message) return null;
+
+  return (
+    <div className="mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 shadow-sm">
+      {message}
+    </div>
+  );
+}
 
 function LandingPage({ onAuth }) {
-  const [loginTab, setLoginTab] = useState('admin'); // 'admin', 'hr', 'vendor', 'employee'
+  const [loginTab, setLoginTab] = useState('hr'); // 'admin', 'hr', 'vendor', 'employee'
   const [isRegistering, setIsRegistering] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const resetLandingState = () => {
+    setErrorMsg("");
+    setFieldErrors({});
+  };
 
   const handleTabSwitch = (tab) => {
     setLoginTab(tab);
-    if (tab === 'admin' || tab === 'hr') setIsRegistering(false); // Admin and HR cannot self-register
-    setErrorMsg("");
+    setIsRegistering(false);
+    setIsAdminUnlocked(false);
+    resetLandingState();
+  };
+
+  const isAdminLogin = loginTab === 'admin' && !isRegistering;
+  const showAdminGate = isAdminLogin && !isAdminUnlocked;
+  const formModeKey = `${loginTab}-${isRegistering ? "register" : "login"}-${isAdminUnlocked ? "unlocked" : "gate"}`;
+  const fieldClass = (name, focusClass) =>
+    `w-full rounded-xl border outline-none transition-all focus:ring-2 ${
+      fieldErrors[name] ? "border-red-300 ring-2 ring-red-100" : `border-slate-200 ${focusClass}`
+    }`;
+  const clearFieldError = (name) => {
+    if (!fieldErrors[name]) return;
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
+  const getFormValue = (form, name) => (form.elements[name]?.value || "").trim();
+  const handlePinInput = (event, fieldName) => {
+    event.target.value = digitsOnly(event.target.value);
+    clearFieldError(fieldName);
+  };
+  const validateLandingForm = (form) => {
+    const nextErrors = {};
+    const requiredFields = showAdminGate
+      ? ["adminGatePin"]
+      : [
+          "username",
+          isAdminLogin ? "password" : "pin",
+          ...(isRegistering && loginTab === "vendor" ? ["businessName", "email", "phone"] : []),
+          ...(isRegistering && loginTab === "employee" ? ["companyCode"] : []),
+        ];
+
+    requiredFields.forEach((name) => {
+      if (!getFormValue(form, name)) {
+        nextErrors[name] = "Please fill this field.";
+      }
+    });
+
+    const emailInput = form.elements.email;
+    if (emailInput && getFormValue(form, "email") && !emailInput.validity.valid) {
+      nextErrors.email = "Please enter a valid email address.";
+    }
+
+    setFieldErrors(nextErrors);
+
+    const firstInvalidField = requiredFields.find((name) => nextErrors[name]) || (nextErrors.email ? "email" : "");
+    if (firstInvalidField) {
+      form.elements[firstInvalidField]?.focus();
+      return false;
+    }
+
+    return true;
   };
 
   return (
@@ -103,10 +201,10 @@ function LandingPage({ onAuth }) {
             <Sparkles className="w-4 h-4" /> The New Standard in Corporate Culture
           </div>
           <h1 className="text-5xl lg:text-6xl font-extrabold text-slate-900 leading-tight">
-            Curate Unforgettable <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-sky-600">Team Experiences</span>
+            Create Unforgettable <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-sky-600">Team Experiences</span>
           </h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-            The ultimate ecosystem connecting HR teams with top-rated coordination vendors, while giving employees a voice in their company culture.
+            The ultimate ecosystem connecting companies with top-rated coordination vendors, while giving employees a voice in their company culture.
           </p>
         </div>
 
@@ -133,56 +231,124 @@ function LandingPage({ onAuth }) {
               <button onClick={() => handleTabSwitch('employee')} className={`flex-1 min-w-[45%] py-2 text-xs font-bold rounded-lg transition-all ${loginTab === 'employee' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}>Employee</button>
             </div>
             
-            {errorMsg && (
-              <div className="mb-5 p-3 bg-red-50 text-red-700 text-sm rounded-xl border border-red-100 font-medium">
-                {errorMsg}
-              </div>
-            )}
+            <LandingNotice message={errorMsg} />
 
-            <form onSubmit={async (e) => { 
+            <form key={formModeKey} noValidate data-custom-validation="landing" onSubmit={async (e) => {
               e.preventDefault(); 
-              setErrorMsg("");
+              resetLandingState();
+
+              if (!validateLandingForm(e.currentTarget)) return;
+
+              if (showAdminGate) {
+                const enteredPin = e.target.adminGatePin.value.trim();
+
+                if (enteredPin !== ADMIN_PORTAL_PIN) {
+                  setFieldErrors({ adminGatePin: "Invalid admin portal PIN" });
+                  e.target.adminGatePin.focus();
+                  return;
+                }
+
+                setIsAdminUnlocked(true);
+                return;
+              }
+
               const username = e.target.username.value;
-              const pin = e.target.pin.value;
+              const pin = e.target.pin?.value;
+              const password = e.target.password?.value;
+              const adminPin = isAdminLogin ? ADMIN_PORTAL_PIN : e.target.adminPin?.value;
               const companyCode = e.target.companyCode?.value;
               const businessName = e.target.businessName?.value;
               const email = e.target.email?.value;
               const phone = e.target.phone?.value;
               
               const err = !isRegistering
-                ? await onAuth('login', { username, pin })
+                ? await onAuth('login', { role: loginTab, portalRole: loginTab, username, pin, password, adminPin })
                 : await onAuth('register', { role: loginTab, username, pin, companyCode, businessName, email, phone });
 
-              if (err) setErrorMsg(err);
+              if (err) {
+                setErrorMsg(err);
+                if (err.startsWith("Success:")) setIsRegistering(false);
+              }
             }} className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Username
-                </label>
-                <div className="relative">
-                  <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input 
-                    name="username"
-                    type="text" 
-                    required 
-                    placeholder="Enter username"
-                    className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'admin' ? 'focus:border-indigo-500 focus:ring-indigo-200' : loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200'}`} 
-                  />
+              {showAdminGate ? (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Admin Portal PIN</label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                      key="admin-gate-pin"
+                      name="adminGatePin"
+                      type="password"
+                      pattern="[0-9]*"
+                      inputMode="numeric"
+                      maxLength="6"
+                      placeholder="Enter admin portal PIN"
+                      required
+                      onInput={(event) => handlePinInput(event, "adminGatePin")}
+                      className={`${fieldClass("adminGatePin", "focus:border-indigo-500 focus:ring-indigo-200")} pl-10 pr-4 py-3`}
+                    />
+                  </div>
+                  <FieldError message={fieldErrors.adminGatePin} />
+                  <p className="mt-2 text-xs font-bold text-indigo-600">Enter admin PIN to continue.</p>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Secure PIN</label>
-                <input 
-                  name="pin"
-                  type="password" 
-                  pattern="[0-9]*"
-                  inputMode="numeric"
-                  maxLength="6"
-                  placeholder="4-6 digit PIN"
-                  required 
-                  className={`w-full px-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 ${loginTab === 'admin' ? 'focus:border-indigo-500 focus:ring-indigo-200' : loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200'}`} 
-                />
-              </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Username
+                  </label>
+                  <div className="relative">
+                    <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                      key={isAdminLogin ? "admin-username" : "portal-username"}
+                      name="username"
+                      type="text"
+                      required
+                      placeholder="Enter username"
+                      onChange={() => clearFieldError("username")}
+                      className={`${fieldClass("username", loginTab === 'admin' ? 'focus:border-indigo-500 focus:ring-indigo-200' : loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200')} pl-10 pr-4 py-3`}
+                    />
+                  </div>
+                  <FieldError message={fieldErrors.username} />
+                </div>
+              )}
+
+              {isAdminLogin && isAdminUnlocked ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                    <input
+                      key="admin-password"
+                      name="password"
+                      type="password"
+                      placeholder="Enter admin password"
+                      required
+                      onChange={() => clearFieldError("password")}
+                      className={`${fieldClass("password", "focus:border-indigo-500 focus:ring-indigo-200")} px-4 py-3`}
+                    />
+                    <FieldError message={fieldErrors.password} />
+                  </div>
+                  <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">
+                    Admin credentials are hidden for security.
+                  </p>
+                </div>
+              ) : !showAdminGate ? (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Secure PIN</label>
+                  <input
+                    key="portal-pin"
+                    name="pin"
+                    type="password"
+                    pattern="[0-9]*"
+                    inputMode="numeric"
+                    maxLength="6"
+                    placeholder="4-6 digit PIN"
+                    required
+                    onInput={(event) => handlePinInput(event, "pin")}
+                    className={`${fieldClass("pin", loginTab === 'admin' ? 'focus:border-indigo-500 focus:ring-indigo-200' : loginTab === 'vendor' ? 'focus:border-emerald-500 focus:ring-emerald-200' : loginTab === 'employee' ? 'focus:border-purple-500 focus:ring-purple-200' : 'focus:border-sky-500 focus:ring-sky-200')} px-4 py-3`}
+                  />
+                  <FieldError message={fieldErrors.pin} />
+                </div>
+              ) : null}
 
               {isRegistering && loginTab === 'vendor' && (
                 <div className="space-y-4">
@@ -195,9 +361,11 @@ function LandingPage({ onAuth }) {
                         type="text" 
                         required 
                         placeholder="e.g., Desert Horizons Coordination"
-                        className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 focus:border-emerald-500 focus:ring-emerald-200`} 
+                        onChange={() => clearFieldError("businessName")}
+                        className={`${fieldClass("businessName", "focus:border-emerald-500 focus:ring-emerald-200")} pl-10 pr-4 py-3`}
                       />
                     </div>
+                    <FieldError message={fieldErrors.businessName} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Business Email</label>
@@ -206,8 +374,10 @@ function LandingPage({ onAuth }) {
                       type="email" 
                       required 
                       placeholder="e.g., contact@vendor.com"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 focus:border-emerald-500 focus:ring-emerald-200"
+                      onChange={() => clearFieldError("email")}
+                      className={`${fieldClass("email", "focus:border-emerald-500 focus:ring-emerald-200")} px-4 py-3`}
                     />
+                    <FieldError message={fieldErrors.email} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Business Phone</label>
@@ -216,8 +386,10 @@ function LandingPage({ onAuth }) {
                       type="tel" 
                       required 
                       placeholder="e.g., +962790000000"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 focus:border-emerald-500 focus:ring-emerald-200"
+                      onChange={() => clearFieldError("phone")}
+                      className={`${fieldClass("phone", "focus:border-emerald-500 focus:ring-emerald-200")} px-4 py-3`}
                     />
+                    <FieldError message={fieldErrors.phone} />
                   </div>
                 </div>
               )}
@@ -232,9 +404,11 @@ function LandingPage({ onAuth }) {
                       type="text" 
                       required 
                       placeholder="e.g., TECH-2026"
-                      className={`w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none transition-all focus:ring-2 focus:border-purple-500 focus:ring-purple-200`} 
+                      onChange={() => clearFieldError("companyCode")}
+                      className={`${fieldClass("companyCode", "focus:border-purple-500 focus:ring-purple-200")} pl-10 pr-4 py-3`}
                     />
                   </div>
+                  <FieldError message={fieldErrors.companyCode} />
                 </div>
               )}
 
@@ -244,16 +418,16 @@ function LandingPage({ onAuth }) {
                 loginTab === 'vendor' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 
                 'bg-purple-600 hover:bg-purple-700 shadow-purple-200'
               }`}>
-                {isRegistering ? 'Register Account' : `Access Portal`}
+                {showAdminGate ? "Unlock Admin Portal" : isRegistering ? 'Register Account' : `Access Portal`}
               </button>
             </form>
 
             {(loginTab === 'vendor' || loginTab === 'employee') && (
               <div className="mt-6 text-center text-sm text-slate-500">
                 {isRegistering ? (
-                  <>Already have an account? <button onClick={() => { setIsRegistering(false); setErrorMsg(""); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Sign In</button></>
+                  <>Already have an account? <button onClick={() => { setIsRegistering(false); resetLandingState(); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Sign In</button></>
                 ) : (
-                  <>Don't have an account? <button onClick={() => { setIsRegistering(true); setErrorMsg(""); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Self-Register</button></>
+                  <>Don't have an account? <button onClick={() => { setIsRegistering(true); resetLandingState(); }} className={`font-bold hover:underline ${loginTab === 'vendor' ? 'text-emerald-600' : 'text-purple-600'}`}>Self-Register</button></>
                 )}
               </div>
             )}

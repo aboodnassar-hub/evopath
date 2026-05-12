@@ -1,4 +1,15 @@
-export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://evopath-backend.onrender.com";
+const getDefaultApiBaseUrl = () => {
+  if (
+    typeof window !== "undefined" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ) {
+    return "http://localhost:5000";
+  }
+
+  return "https://evopath-backend.onrender.com";
+};
+
+export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || getDefaultApiBaseUrl();
 
 export const INITIAL_ACTIVITIES = [
   {

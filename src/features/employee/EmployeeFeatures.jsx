@@ -242,6 +242,7 @@ function EmployeeOpportunities({ onRefreshProfile }) {
   const [isLoading, setIsLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [joiningId, setJoiningId] = useState(null);
+  const [withdrawingId, setWithdrawingId] = useState(null);
 
   const fetchOpportunities = async () => {
     const token = localStorage.getItem("token");
@@ -306,6 +307,36 @@ function EmployeeOpportunities({ onRefreshProfile }) {
     }
   };
 
+  const withdrawOpportunity = async (opportunityId) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setMsg("Error: Employee token not found. Please login again.");
+      return;
+    }
+
+    try {
+      setWithdrawingId(opportunityId);
+      setMsg("");
+      const response = await fetch(`${API_BASE_URL}/volunteer-opportunities/${opportunityId}/withdraw`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setMsg(`Error: ${data.message || "Failed to withdraw."}`);
+        return;
+      }
+      setMsg("Success: You withdrew from this volunteer opportunity.");
+      fetchOpportunities();
+      if (onRefreshProfile) onRefreshProfile();
+    } catch (error) {
+      console.error(error);
+      setMsg("Error: Cannot connect to backend. Withdrawal failed.");
+    } finally {
+      setWithdrawingId(null);
+    }
+  };
+
   const currentUser = (() => {
     try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; }
   })();
@@ -344,6 +375,7 @@ function EmployeeOpportunities({ onRefreshProfile }) {
           {opportunities.map((opp) => {
             const joined = (opp.participants || []).some((participant) => String(participant.employeeId) === String(currentUser._id));
             const isFull = (opp.participants || []).length >= Number(opp.maxParticipants || 0) || opp.status === "closed";
+            const isBusy = joiningId === opp._id || withdrawingId === opp._id;
             return (
               <div key={opp._id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -371,11 +403,17 @@ function EmployeeOpportunities({ onRefreshProfile }) {
                   </div>
                 </div>
                 <button
-                  onClick={() => joinOpportunity(opp._id)}
-                  disabled={joined || isFull || joiningId === opp._id}
-                  className={`mt-auto w-full py-3 rounded-xl font-bold transition-colors ${joined || isFull ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-purple-600 text-white hover:bg-purple-700"}`}
+                  onClick={() => (joined ? withdrawOpportunity(opp._id) : joinOpportunity(opp._id))}
+                  disabled={(!joined && isFull) || isBusy}
+                  className={`mt-auto w-full py-3 rounded-xl font-bold transition-colors ${
+                    joined
+                      ? "bg-red-50 text-red-700 hover:bg-red-100 disabled:bg-slate-100 disabled:text-slate-400"
+                      : isFull
+                      ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      : "bg-purple-600 text-white hover:bg-purple-700"
+                  }`}
                 >
-                  {joined ? "Joined" : isFull ? "Closed" : joiningId === opp._id ? "Joining..." : "Join Opportunity"}
+                  {joined ? (withdrawingId === opp._id ? "Withdrawing..." : "Withdraw Registration") : isFull ? "Closed" : joiningId === opp._id ? "Joining..." : "Join Opportunity"}
                 </button>
               </div>
             );
@@ -391,6 +429,7 @@ function EmployeeActiveEvents() {
   const [isLoading, setIsLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [joiningId, setJoiningId] = useState("");
+  const [withdrawingId, setWithdrawingId] = useState("");
 
   const currentUser = (() => {
     try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; }
@@ -527,6 +566,48 @@ function EmployeeActiveEvents() {
     }
   };
 
+  const withdrawEvent = async (event) => {
+    const token = localStorage.getItem("token");
+    const eventId = event._id || event.id || event.employeeEventId || event.bookingId;
+    const isVolunteerActivity = event.activityKind === "volunteer";
+
+    if (!token) {
+      setMsg("Error: Employee token not found. Please login again.");
+      return;
+    }
+
+    if (!eventId) {
+      setMsg("Error: Event ID is missing.");
+      return;
+    }
+
+    try {
+      setWithdrawingId(eventId);
+      setMsg("");
+      const endpoint = isVolunteerActivity
+        ? `/volunteer-opportunities/${eventId}/withdraw`
+        : `/employee/events/${eventId}/withdraw`;
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMsg(`Error: ${data.message || "Failed to withdraw."}`);
+        return;
+      }
+
+      setMsg(isVolunteerActivity ? "Success: You withdrew from this volunteer opportunity." : "Success: You withdrew from this trip or event.");
+      fetchActiveEvents();
+    } catch (error) {
+      console.error(error);
+      setMsg("Error: Cannot connect to backend. Withdrawal failed.");
+    } finally {
+      setWithdrawingId("");
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <header className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -564,6 +645,7 @@ function EmployeeActiveEvents() {
             const isVolunteerActivity = event.activityKind === "volunteer";
             const eventInfo = getEventInfo(event);
             const isJoining = joiningId === eventId;
+            const isWithdrawing = withdrawingId === eventId;
             return (
               <div key={activityKey} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -605,16 +687,18 @@ function EmployeeActiveEvents() {
                 </div>
 
                 <button
-                  onClick={() => joinEvent(event)}
-                  disabled={eventInfo.joined || eventInfo.isClosed || isJoining}
+                  onClick={() => (eventInfo.joined ? withdrawEvent(event) : joinEvent(event))}
+                  disabled={eventInfo.joined ? isWithdrawing : eventInfo.isClosed || isJoining}
                   className={`mt-auto w-full py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
-                    eventInfo.joined || eventInfo.isClosed
+                    eventInfo.joined
+                      ? "bg-red-50 text-red-700 hover:bg-red-100 disabled:bg-slate-100 disabled:text-slate-400"
+                      : eventInfo.isClosed
                       ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                       : "bg-purple-600 text-white hover:bg-purple-700"
                   }`}
                 >
                   {eventInfo.joined ? <CheckCircle className="w-4 h-4" /> : null}
-                  {eventInfo.joined ? (isVolunteerActivity ? "Registered" : "Joined") : eventInfo.isClosed ? "Closed" : isJoining ? "Joining..." : "Join Event"}
+                  {eventInfo.joined ? (isWithdrawing ? "Withdrawing..." : "Withdraw Participation") : eventInfo.isClosed ? "Closed" : isJoining ? "Joining..." : "Join Event"}
                 </button>
               </div>
             );

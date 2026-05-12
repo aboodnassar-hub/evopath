@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Calendar, LogOut, Star, Shield, ChevronRight, Menu, X, Vote, CheckCircle, PlusCircle, Trash2, Key } from 'lucide-react';
 import { apiRequest, getAuthToken } from '../utils/api';
-import { LanguageToggle, translateForCurrentLanguage } from '../utils/i18n';
+import { LanguageToggle, showSystemMessage } from '../utils/i18n';
 
 const EvoPathLogo = ({ className = "w-8 h-8", imgUrl }) => (
   <div data-no-translate dir="ltr" className={`relative shrink-0 rounded-lg overflow-hidden shadow-sm border border-sky-100 group bg-white ${className}`}>
@@ -422,7 +422,11 @@ function TeamPolling({ role = "hr", onProfileUpdate }) {
     const cleanedOptions = newOptions.map((option) => option.trim()).filter(Boolean);
 
     if (!newQuestion.trim() || cleanedOptions.length < 2) {
-      alert(translateForCurrentLanguage("Please enter a question and at least two options."));
+      showSystemMessage({
+        tone: "error",
+        title: "Action needed",
+        message: "Please enter a question and at least two options.",
+      });
       return;
     }
 

@@ -1,8 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Languages } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, Languages, X } from 'lucide-react';
 
 const LANGUAGE_STORAGE_KEY = "evopath-language";
 const textNodeOriginals = new WeakMap();
+
+export function showSystemMessage({ message, title, tone = "info" }) {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent("evopath:system-message", {
+      detail: { message, title, tone },
+    })
+  );
+}
 
 const AR_TRANSLATIONS = {
   "Active Trips / Events": "الرحلات / الفعاليات النشطة",
@@ -32,6 +42,21 @@ const AR_TRANSLATIONS = {
   "Available on Event Date": "متاح في تاريخ الفعالية",
   "Withdraw": "انسحاب",
   "Withdrawing...": "جارٍ الانسحاب...",
+  "Withdraw Registration": "سحب التسجيل",
+  "Withdraw Participation": "سحب المشاركة",
+  "You withdrew from this volunteer opportunity.": "تم سحب تسجيلك من فرصة التطوع هذه.",
+  "Success: You withdrew from this volunteer opportunity.": "نجاح: تم سحب تسجيلك من فرصة التطوع هذه.",
+  "You withdrew from this trip or event.": "تم سحب مشاركتك من هذه الرحلة أو الفعالية.",
+  "Success: You withdrew from this trip or event.": "نجاح: تم سحب مشاركتك من هذه الرحلة أو الفعالية.",
+  "Failed to withdraw.": "فشل سحب المشاركة.",
+  "Error: Failed to withdraw.": "خطأ: فشل سحب المشاركة.",
+  "Cannot connect to backend. Withdrawal failed.": "لا يمكن الاتصال بالخادم. فشل سحب المشاركة.",
+  "Error: Cannot connect to backend. Withdrawal failed.": "خطأ: لا يمكن الاتصال بالخادم. فشل سحب المشاركة.",
+  "Completed events cannot be withdrawn": "لا يمكن الانسحاب من الفعاليات المكتملة",
+  "Completed volunteer opportunities cannot be withdrawn": "لا يمكن الانسحاب من فرص التطوع المكتملة",
+  "Completed volunteer participation cannot be withdrawn": "لا يمكن الانسحاب من مشاركة تطوعية مكتملة",
+  "You are not registered for this event": "أنت غير مسجل في هذه الفعالية",
+  "You are not registered for this volunteer opportunity": "أنت غير مسجل في فرصة التطوع هذه",
   "Event withdrawn from HR and employees.": "تم سحب الفعالية من HR والموظفين.",
   "HR completion saved.": "تم حفظ إكمال HR.",
   "Vendor completion saved.": "تم حفظ إكمال المزوّد.",
@@ -67,6 +92,7 @@ const AR_TRANSLATIONS = {
   "Company Volunteer": "تطوع الشركة",
   "Volunteer": "تطوع",
   "Registered": "مسجل",
+  "Create and manage HR accounts from MongoDB, so data appears on every device.": "قم بإنشاء وإدارة حسابات الشركات من MongoDB، بحيث تظهر البيانات على كل جهاز.",
   "Failed to load volunteer registrations.": "فشل تحميل تسجيلات التطوع.",
   "Cannot load your activities from backend.": "لا يمكن تحميل أنشطتك من الخادم.",
   "Failed to load active trips and events.": "فشل تحميل الرحلات والفعاليات النشطة.",
@@ -83,19 +109,47 @@ const AR_TRANSLATIONS = {
   "For Vendors": "للمزوّدين",
   "For Employees": "للموظفين",
   "The New Standard in Corporate Culture": "المعيار الجديد في ثقافة الشركات",
-  "Curate Unforgettable": "اصنع تجارب لا تُنسى",
-  "Team Experiences": "لتجارب الفريق",
-  "The ultimate ecosystem connecting HR teams with top-rated coordination vendors, while giving employees a voice in their company culture.": "منصة متكاملة تربط فرق الموارد البشرية بأفضل مزوّدي الفعاليات، وتمنح الموظفين صوتاً في ثقافة شركتهم.",
+  "Create Unforgettable": "اصنع تجارب لا تُنسى",
+  "Team Experiences": "لروح الفريق",
+  "The ultimate ecosystem connecting companies with top-rated coordination vendors, while giving employees a voice in their company culture.": "منصة متكاملة تربط الشركات بأفضل مزوّدي الفعاليات، وتمنح الموظفين صوتاً في ثقافة شركتهم.",
   "Sign In": "تسجيل الدخول",
+  "Success": "نجاح",
+  "Action needed": "يلزم إجراء",
+  "Required field": "حقل مطلوب",
+  "System message": "رسالة النظام",
+  "Close message": "إغلاق الرسالة",
+  "Please fill this field.": "يرجى تعبئة هذا الحقل.",
+  "Please complete the highlighted field.": "يرجى إكمال الحقل المحدد.",
+  "Please enter a valid email address.": "يرجى إدخال بريد إلكتروني صحيح.",
+  "Please enter a valid value.": "يرجى إدخال قيمة صحيحة.",
+  "Invalid credentials": "بيانات الدخول غير صحيحة",
+  "Error: Invalid credentials": "خطأ: بيانات الدخول غير صحيحة",
   "Self-Registration": "تسجيل ذاتي",
   "Select your portal to continue.": "اختر البوابة للمتابعة.",
   "Enter your details and provided company code.": "أدخل بياناتك ورمز الشركة المزوّد لك.",
   "Enter your business details to partner with us.": "أدخل بيانات شركتك للشراكة معنا.",
   "Admin": "الأدمن",
-  "HR Admin": "مسؤول الموارد البشرية",
+  "HR Admin": "مسؤول",
   "Vendor": "المزوّد",
   "Employee": "الموظف",
   "Username": "اسم المستخدم",
+  "Password": "كلمة المرور",
+  "Enter admin password": "أدخل كلمة مرور المدير",
+  "Admin Portal PIN": "رمز بوابة المدير",
+  "Admin Security PIN": "رمز أمان المدير",
+  "Admin portal PIN: 147862": "رمز بوابة المدير: 147862",
+  "Enter admin portal PIN": "أدخل رمز بوابة المدير",
+  "Enter admin PIN to continue.": "أدخل رمز المدير للمتابعة.",
+  "Admin credentials:": "بيانات دخول المدير:",
+  "Admin credentials are hidden for security.": "بيانات دخول المدير مخفية للحماية.",
+  "Unlock Admin Portal": "فتح بوابة المدير",
+  "Username, password, and admin PIN are required.": "اسم المستخدم وكلمة المرور ورمز المدير مطلوبة.",
+  "Please select your portal before login.": "يرجى اختيار البوابة قبل تسجيل الدخول.",
+  "Error: Please select your portal before login.": "خطأ: يرجى اختيار البوابة قبل تسجيل الدخول.",
+  "Please select the correct portal for your role.": "يرجى اختيار البوابة الصحيحة لدورك.",
+  "Invalid admin portal PIN": "رمز بوابة المدير غير صحيح",
+  "Error: Invalid admin portal PIN": "خطأ: رمز بوابة المدير غير صحيح",
+  "Error: Please select the correct portal for your role.": "خطأ: يرجى اختيار البوابة الصحيحة لدورك.",
   "Secure PIN": "رمز PIN الآمن",
   "Business Name": "اسم النشاط التجاري",
   "Business Email": "البريد الإلكتروني للنشاط",
@@ -104,7 +158,9 @@ const AR_TRANSLATIONS = {
   "Register Account": "تسجيل الحساب",
   "Access Portal": "الدخول للبوابة",
   "Vendor registration submitted successfully. Your account is pending admin approval.": "تم إرسال تسجيل المزوّد بنجاح. حسابك بانتظار موافقة الأدمن.",
+  "Success: Vendor registration submitted successfully. Your account is pending admin approval.": "نجاح: تم إرسال تسجيل المزوّد بنجاح. حسابك بانتظار موافقة الأدمن.",
   "Account created successfully! Please sign in now.": "تم إنشاء الحساب بنجاح! يرجى تسجيل الدخول الآن.",
+  "Success: Account created successfully! Please sign in now.": "نجاح: تم إنشاء الحساب بنجاح! يرجى تسجيل الدخول الآن.",
   "Already have an account?": "لديك حساب بالفعل؟",
   "Don't have an account?": "ليس لديك حساب؟",
   "Self-Register": "تسجيل ذاتي",
@@ -208,7 +264,7 @@ const AR_TRANSLATIONS = {
   "Generate New HR Account": "إنشاء حساب HR جديد",
   "Generated HR Credentials": "بيانات حساب HR التي تم إنشاؤها",
   "PIN": "رمز PIN",
-  "HR Representative Name": "اسم ممثل الموارد البشرية",
+  "HR Representative Name": "اسم ممثل الموارد الشركة",
   "Company Name": "اسم الشركة",
   "HR Email": "بريد HR الإلكتروني",
   "HR Phone": "هاتف HR",
@@ -567,6 +623,13 @@ const AR_TRANSLATIONS = {
   "Error: Failed to load employee feedback.": "خطأ: فشل تحميل ملاحظات الموظفين.",
   "Error: Cannot load employee feedback from backend.": "خطأ: لا يمكن تحميل ملاحظات الموظفين من الخادم.",
   "Vendor Ratings": "تقييمات المزوّدين",
+  "Recent Vendor Feedback": "أحدث ملاحظات المزوّدين",
+  "Current vendor rating summary from employee feedback.": "ملخص تقييمات المزوّدين الحالي بناءً على ملاحظات الموظفين.",
+  "Latest employee comments across the platform.": "أحدث تعليقات الموظفين على مستوى المنصة.",
+  "No vendor ratings yet.": "لا توجد تقييمات للمزوّدين بعد.",
+  "No recent feedback yet.": "لا توجد ملاحظات حديثة بعد.",
+  "Vendor Email": "بريد المزوّد",
+  "Vendor Phone": "هاتف المزوّد",
   "No feedback submitted yet.": "لم يتم إرسال ملاحظات بعد.",
   "Employee feedback will appear after completed events.": "ستظهر ملاحظات الموظفين بعد الفعاليات المكتملة.",
   "No written comment.": "لا يوجد تعليق مكتوب.",
@@ -630,6 +693,7 @@ const PREFIX_TRANSLATIONS = [
   ["Error:", "خطأ:"],
   ["Success:", "نجاح:"],
   ["Feedback:", "ملاحظات:"],
+  ["Admin credentials:", "بيانات دخول المدير:"],
   ["Vendor:", "المزوّد:"],
   ["Contact:", "جهة الاتصال:"],
   ["Rep:", "المسؤول:"],
@@ -756,6 +820,107 @@ function translateNode(node, language) {
   node.childNodes.forEach((child) => translateNode(child, language));
 }
 
+function getValidationMessage(element) {
+  if (element?.validity?.typeMismatch && element.type === "email") {
+    return "Please enter a valid email address.";
+  }
+
+  if (element?.validity?.valueMissing) {
+    return "Please fill this field.";
+  }
+
+  return "Please enter a valid value.";
+}
+
+function getValidationMessageTarget(element) {
+  return element.closest(".relative") || element;
+}
+
+function clearFieldValidationMessage(element) {
+  if (!element) return;
+
+  element.classList.remove("border-red-300", "ring-2", "ring-red-100");
+  element.removeAttribute("aria-invalid");
+
+  const target = getValidationMessageTarget(element);
+  const message = target?.parentElement?.querySelector?.(`[data-field-error-for="${element.name || element.id || "field"}"]`);
+
+  if (message) message.remove();
+}
+
+function showFieldValidationMessage(element, message) {
+  if (!element) return;
+
+  clearFieldValidationMessage(element);
+
+  const target = getValidationMessageTarget(element);
+  const parent = target?.parentElement;
+  const messageId = element.name || element.id || "field";
+  const translatedMessage = translateText(message, getStoredLanguage());
+
+  element.classList.add("border-red-300", "ring-2", "ring-red-100");
+  element.setAttribute("aria-invalid", "true");
+
+  if (!parent) return;
+
+  const messageElement = document.createElement("div");
+  messageElement.setAttribute("data-field-error-for", messageId);
+  messageElement.className = "mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 shadow-sm";
+  messageElement.textContent = translatedMessage;
+
+  target.insertAdjacentElement("afterend", messageElement);
+}
+
+function SystemMessageToast({ message, onClose }) {
+  if (!message) return null;
+
+  const tone = message.tone || "info";
+  const isSuccess = tone === "success";
+  const isError = tone === "error";
+  const Icon = isSuccess ? CheckCircle : isError ? AlertCircle : Info;
+  const styles = isSuccess
+    ? {
+        shell: "border-emerald-100 bg-emerald-50 text-emerald-900 shadow-emerald-100",
+        iconBox: "bg-white text-emerald-600",
+        close: "text-emerald-700 hover:bg-emerald-100",
+      }
+    : isError
+    ? {
+        shell: "border-red-100 bg-red-50 text-red-900 shadow-red-100",
+        iconBox: "bg-white text-red-600",
+        close: "text-red-700 hover:bg-red-100",
+      }
+    : {
+        shell: "border-sky-100 bg-sky-50 text-sky-900 shadow-sky-100",
+        iconBox: "bg-white text-sky-600",
+        close: "text-sky-700 hover:bg-sky-100",
+      };
+
+  return (
+    <div className="fixed right-4 top-4 z-[200] w-[calc(100vw-2rem)] max-w-md">
+      <div className={`rounded-2xl border p-4 shadow-xl backdrop-blur-sm ${styles.shell}`}>
+        <div className="flex items-start gap-3">
+          <div className={`mt-0.5 rounded-xl p-2 ${styles.iconBox}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black">{message.title || (isError ? "Action needed" : isSuccess ? "Success" : "System message")}</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed">{message.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`rounded-lg p-1.5 transition-colors ${styles.close}`}
+            aria-label="Close message"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const LanguageContext = createContext({
   language: "en",
   setLanguage: () => {},
@@ -764,11 +929,76 @@ const LanguageContext = createContext({
 
 export function LanguageProvider({ children }) {
   const [language, setLanguageState] = useState(getStoredLanguage);
+  const [systemMessage, setSystemMessage] = useState(null);
 
   const setLanguage = useCallback((nextLanguage) => {
     setLanguageState(nextLanguage);
     localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
   }, []);
+
+  const pushSystemMessage = useCallback((message) => {
+    setSystemMessage({
+      tone: message?.tone || "info",
+      title: message?.title || "",
+      message: message?.message || "",
+    });
+  }, []);
+
+  useEffect(() => {
+    let invalidHandled = false;
+
+    const handleSystemMessage = (event) => {
+      const detail = event.detail || {};
+      if (!detail.message) return;
+      pushSystemMessage(detail);
+    };
+
+    const handleInvalid = (event) => {
+      const element = event.target;
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement)) return;
+      if (element.closest("[data-custom-validation='landing']")) return;
+
+      event.preventDefault();
+      if (invalidHandled) return;
+
+      invalidHandled = true;
+      window.setTimeout(() => {
+        invalidHandled = false;
+      }, 0);
+
+      element.focus({ preventScroll: false });
+      showFieldValidationMessage(element, getValidationMessage(element));
+    };
+
+    const handleFieldInput = (event) => {
+      const element = event.target;
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement)) return;
+      if (element.closest("[data-custom-validation='landing']")) return;
+
+      if (element.checkValidity()) {
+        clearFieldValidationMessage(element);
+      }
+    };
+
+    window.addEventListener("evopath:system-message", handleSystemMessage);
+    document.addEventListener("invalid", handleInvalid, true);
+    document.addEventListener("input", handleFieldInput, true);
+    document.addEventListener("change", handleFieldInput, true);
+
+    return () => {
+      window.removeEventListener("evopath:system-message", handleSystemMessage);
+      document.removeEventListener("invalid", handleInvalid, true);
+      document.removeEventListener("input", handleFieldInput, true);
+      document.removeEventListener("change", handleFieldInput, true);
+    };
+  }, [pushSystemMessage]);
+
+  useEffect(() => {
+    if (!systemMessage) return undefined;
+
+    const timeoutId = window.setTimeout(() => setSystemMessage(null), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [systemMessage]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -809,6 +1039,7 @@ export function LanguageProvider({ children }) {
   return (
     <LanguageContext.Provider value={value}>
       {children}
+      <SystemMessageToast message={systemMessage} onClose={() => setSystemMessage(null)} />
     </LanguageContext.Provider>
   );
 }

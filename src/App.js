@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { INITIAL_ACTIVITIES } from './utils/constants';
 import { apiRequest } from './utils/api';
-import { LanguageProvider, translateForCurrentLanguage } from './utils/i18n';
+import { LanguageProvider } from './utils/i18n';
 import LandingPage from './pages/LandingPage';
 import { AdminPortal } from './features/admin/AdminFeatures';
 import { HrPortal } from './features/hr/HrFeatures';
@@ -49,6 +49,9 @@ export default function App() {
     let businessName = businessNameArg;
     let email = "";
     let phone = "";
+    let password = "";
+    let adminPin = "";
+    let portalRole = "";
 
     if (actionOrRole === "login" || actionOrRole === "register") {
       const payload = payloadOrUsername || {};
@@ -56,6 +59,9 @@ export default function App() {
       role = payload.role;
       username = payload.username;
       pin = payload.pin;
+      password = payload.password;
+      adminPin = payload.adminPin;
+      portalRole = payload.portalRole || payload.role;
       companyCode = payload.companyCode;
       businessName = payload.businessName;
       email = payload.email;
@@ -68,13 +74,24 @@ export default function App() {
     businessName = (businessName || "").trim();
     email = (email || "").trim();
     phone = (phone || "").trim();
+    password = password || "";
+    adminPin = (adminPin || "").trim();
+    portalRole = portalRole || role;
 
-    if (!username || !pin) {
+    if (isRegistering && (!username || !pin)) {
+      return "Username and PIN are required.";
+    }
+
+    if (!isRegistering && portalRole === "admin" && (!username || !password || !adminPin)) {
+      return "Username, password, and admin PIN are required.";
+    }
+
+    if (!isRegistering && portalRole !== "admin" && (!username || !pin)) {
       return "Username and PIN are required.";
     }
 
     let endpoint = "login";
-    let requestBody = { username, pin };
+    let requestBody = { username, pin, password, adminPin, portalRole };
 
     if (isRegistering) {
       if (role === "employee") {
@@ -112,15 +129,17 @@ export default function App() {
 
       if (isRegistering) {
         if (role === "vendor") {
-          alert(translateForCurrentLanguage("Vendor registration submitted successfully. Your account is pending admin approval."));
-        } else {
-          alert(translateForCurrentLanguage("Account created successfully! Please sign in now."));
+          return "Success: Vendor registration submitted successfully. Your account is pending admin approval.";
         }
-        return null;
+        return "Success: Account created successfully! Please sign in now.";
       }
 
       if (data.user?.role === "vendor" && data.user?.status === "pending") {
         return "Your account is awaiting admin approval.";
+      }
+
+      if (portalRole && data.user?.role !== portalRole) {
+        return "Please select the correct portal for your role.";
       }
 
       localStorage.setItem("token", data.token);

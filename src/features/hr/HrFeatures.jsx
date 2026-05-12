@@ -4,7 +4,7 @@ import { Briefcase, Map as MapIcon, Heart, Calendar, Users,
   Award, X,
   Vote, CheckCircle, MessageSquare,
   PlusCircle, Send, DollarSign, AlignLeft,
-  Clock, Key, Trash2, History } from 'lucide-react';
+  Clock, Key, Trash2, History, Mail, Phone } from 'lucide-react';
 import { API_BASE_URL } from '../../utils/constants';
 import { Sidebar, MobileHeader, usePinReset, ResetPinModal, ConfirmActionModal, TeamPolling, ActivityCard } from '../../components/shared';
 
@@ -17,6 +17,31 @@ const isDateReached = (dateValue) => {
   today.setHours(0, 0, 0, 0);
   return eventDate <= today;
 };
+
+function VendorContact({ email, phone, className = "" }) {
+  if (!email && !phone) return null;
+
+  return (
+    <div className={`mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 ${className}`}>
+      {email && (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+          <p className="flex items-center gap-1 text-[11px] uppercase font-black text-slate-400">
+            <Mail className="w-3.5 h-3.5" /> Vendor Email
+          </p>
+          <p className="mt-1 break-all text-xs font-bold text-slate-700">{email}</p>
+        </div>
+      )}
+      {phone && (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+          <p className="flex items-center gap-1 text-[11px] uppercase font-black text-slate-400">
+            <Phone className="w-3.5 h-3.5" /> Vendor Phone
+          </p>
+          <p className="mt-1 text-xs font-bold text-slate-700">{phone}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function HrPortal({ user, onLogout, activities, setActivities, usersDB, setUsersDB }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -382,13 +407,7 @@ function HrBookingDrilldown() {
                   <div>
                     <p className="font-bold text-slate-800">{item.title}</p>
                     <p className="text-xs text-slate-500">Vendor: {item.vendorCompany}</p>
-                    {(item.vendorEmail || item.vendorPhone) && (
-                      <p className="text-xs text-slate-500">
-                        {item.vendorEmail && <span className="break-all">{item.vendorEmail}</span>}
-                        {item.vendorEmail && item.vendorPhone && <span> - </span>}
-                        {item.vendorPhone && <span>{item.vendorPhone}</span>}
-                      </p>
-                    )}
+                    <VendorContact email={item.vendorEmail} phone={item.vendorPhone} />
                   </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${item.source === "Custom Request" ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
                     {item.source}
@@ -890,13 +909,7 @@ function HrCompanyEvents() {
                 <div>
                   <h3 className="font-black text-lg text-slate-900">{booking.activityTitle}</h3>
                   <p className="text-sm text-slate-500">Vendor: {booking.vendorCompany}</p>
-                  {(booking.vendorEmail || booking.vendorPhone) && (
-                    <p className="text-xs text-slate-500">
-                      {booking.vendorEmail && <span className="break-all">{booking.vendorEmail}</span>}
-                      {booking.vendorEmail && booking.vendorPhone && <span> - </span>}
-                      {booking.vendorPhone && <span>{booking.vendorPhone}</span>}
-                    </p>
-                  )}
+                  <VendorContact email={booking.vendorEmail} phone={booking.vendorPhone} />
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${booking.status === "confirmed" ? "bg-green-100 text-green-700" : booking.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{booking.status === "confirmed" ? "Active" : booking.status}</span>
               </div>
@@ -1050,13 +1063,7 @@ function BookingDetailsModal({ activity, user, onClose }) {
             <p className="text-xs font-bold uppercase tracking-wider text-sky-600 mb-1">Activity Details</p>
             <h3 className="text-2xl font-black text-slate-900">{activity.title}</h3>
             <p className="text-sm text-slate-500 mt-1">Vendor: {activity.vendor}</p>
-            {(activity.vendorEmail || activity.vendorPhone) && (
-              <p className="text-xs text-slate-500 mt-1">
-                {activity.vendorEmail && <span className="break-all">{activity.vendorEmail}</span>}
-                {activity.vendorEmail && activity.vendorPhone && <span> - </span>}
-                {activity.vendorPhone && <span>{activity.vendorPhone}</span>}
-              </p>
-            )}
+            <VendorContact email={activity.vendorEmail} phone={activity.vendorPhone} />
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
             <X className="w-5 h-5 text-slate-500" />
@@ -1502,8 +1509,13 @@ function CustomRequest() {
                   <p><strong>Participants:</strong> {request.participants}</p>
                   <p><strong>Date:</strong> {request.targetDate}</p>
                   <p><strong>Vendor:</strong> {request.vendorCompany || request.targetVendorCompany || "Pending"}</p>
-                  {(request.vendorEmail || request.targetVendorEmail) && <p className="col-span-2"><strong>Vendor Email:</strong> <span className="break-all">{request.vendorEmail || request.targetVendorEmail}</span></p>}
-                  {(request.vendorPhone || request.targetVendorPhone) && <p className="col-span-2"><strong>Vendor Phone:</strong> {request.vendorPhone || request.targetVendorPhone}</p>}
+                  <div className="col-span-2">
+                    <VendorContact
+                      email={request.vendorEmail || request.targetVendorEmail}
+                      phone={request.vendorPhone || request.targetVendorPhone}
+                      className="mt-0"
+                    />
+                  </div>
                   <p><strong>Source:</strong> Custom Request</p>
                 </div>
                 {request.status === "approved" && (
