@@ -8,6 +8,11 @@ import { HrPortal } from './features/hr/HrFeatures';
 import { VendorPortal } from './features/vendor/VendorFeatures';
 import { EmployeePortal } from './features/employee/EmployeeFeatures';
 
+const isValidUsername = (value) =>
+  /^[A-Za-z0-9._-]+$/.test(value) &&
+  /^[A-Za-z0-9]/.test(value) &&
+  /[A-Za-z]/.test(value);
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
@@ -78,8 +83,18 @@ export default function App() {
     adminPin = (adminPin || "").trim();
     portalRole = portalRole || role;
 
+    if (username && !isValidUsername(username)) {
+      return "Username must use English letters, numbers, dots, underscores, or hyphens only.";
+    }
+
+    username = username.toLowerCase();
+
     if (isRegistering && (!username || !pin)) {
       return "Username and PIN are required.";
+    }
+
+    if (isRegistering && pin.length < 4) {
+      return "PIN must be at least 4 digits.";
     }
 
     if (!isRegistering && portalRole === "admin" && (!username || !password || !adminPin)) {
@@ -88,6 +103,10 @@ export default function App() {
 
     if (!isRegistering && portalRole !== "admin" && (!username || !pin)) {
       return "Username and PIN are required.";
+    }
+
+    if (!isRegistering && portalRole !== "admin" && pin.length < 4) {
+      return "PIN must be at least 4 digits.";
     }
 
     let endpoint = "login";

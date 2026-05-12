@@ -5,6 +5,9 @@ import { LanguageToggle, translateText, useLanguage } from '../utils/i18n';
 
 const ADMIN_PORTAL_PIN = "147862";
 const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
+const usernamePattern = /^[A-Za-z0-9._-]+$/;
+const usernameStartsValid = /^[A-Za-z0-9]/;
+const usernameHasLetter = /[A-Za-z]/;
 
 function LandingNotice({ message }) {
   const { language } = useLanguage();
@@ -31,11 +34,13 @@ function LandingNotice({ message }) {
 }
 
 function FieldError({ message }) {
+  const { language } = useLanguage();
+
   if (!message) return null;
 
   return (
-    <div className="mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 shadow-sm">
-      {message}
+    <div data-no-translate className="mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 shadow-sm">
+      {translateText(message, language)}
     </div>
   );
 }
@@ -79,6 +84,13 @@ function LandingPage({ onAuth }) {
     event.target.value = digitsOnly(event.target.value);
     clearFieldError(fieldName);
   };
+  const validateUsername = (value) => {
+    if (!value) return "";
+    if (!usernamePattern.test(value)) return "Username must use English letters, numbers, dots, underscores, or hyphens only.";
+    if (!usernameStartsValid.test(value)) return "Username cannot start with a special character.";
+    if (!usernameHasLetter.test(value)) return "Username cannot be only digits.";
+    return "";
+  };
   const validateLandingForm = (form) => {
     const nextErrors = {};
     const requiredFields = showAdminGate
@@ -93,6 +105,19 @@ function LandingPage({ onAuth }) {
     requiredFields.forEach((name) => {
       if (!getFormValue(form, name)) {
         nextErrors[name] = "Please fill this field.";
+      }
+    });
+
+    const usernameValue = getFormValue(form, "username");
+    const usernameError = validateUsername(usernameValue);
+    if (usernameError && !nextErrors.username) {
+      nextErrors.username = usernameError;
+    }
+
+    ["adminGatePin", "pin"].forEach((name) => {
+      const pinValue = getFormValue(form, name);
+      if (pinValue && pinValue.length < 4 && !nextErrors[name]) {
+        nextErrors[name] = "PIN must be at least 4 digits.";
       }
     });
 
@@ -281,6 +306,7 @@ function LandingPage({ onAuth }) {
                       type="password"
                       pattern="[0-9]*"
                       inputMode="numeric"
+                      minLength="4"
                       maxLength="6"
                       placeholder="Enter admin portal PIN"
                       required
@@ -313,7 +339,7 @@ function LandingPage({ onAuth }) {
               )}
 
               {isAdminLogin && isAdminUnlocked ? (
-                <div className="space-y-4">
+                <div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                     <input
@@ -327,9 +353,6 @@ function LandingPage({ onAuth }) {
                     />
                     <FieldError message={fieldErrors.password} />
                   </div>
-                  <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">
-                    Admin credentials are hidden for security.
-                  </p>
                 </div>
               ) : !showAdminGate ? (
                 <div>
@@ -340,6 +363,7 @@ function LandingPage({ onAuth }) {
                     type="password"
                     pattern="[0-9]*"
                     inputMode="numeric"
+                    minLength="4"
                     maxLength="6"
                     placeholder="4-6 digit PIN"
                     required

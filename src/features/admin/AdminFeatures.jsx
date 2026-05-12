@@ -15,7 +15,7 @@ function AdminPortal({ user, onLogout, usersDB, setUsersDB }) {
         themeColor="indigo"
         navItems={[
           { id: 'dashboard', icon: <TrendingUp />, label: "Overview" },
-          { id: 'manage-hr', icon: <Briefcase />, label: "Manage Companies (HR)" },
+          { id: 'manage-hr', icon: <Briefcase />, label: "Manage Companies" },
           { id: 'approve-vendors', icon: <ShieldCheck />, label: "Manage Vendors" }
         ]}
       />

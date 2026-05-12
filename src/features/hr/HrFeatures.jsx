@@ -1057,8 +1057,8 @@ function BookingDetailsModal({ activity, user, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-      <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-in zoom-in-95">
-        <div className="p-6 border-b border-slate-100 flex items-start justify-between gap-4">
+      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col">
+        <div className="p-6 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-sky-600 mb-1">Activity Details</p>
             <h3 className="text-2xl font-black text-slate-900">{activity.title}</h3>
@@ -1070,7 +1070,21 @@ function BookingDetailsModal({ activity, user, onClose }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmitBooking} className="p-6 space-y-6">
+        <form onSubmit={handleSubmitBooking} className="p-6 space-y-6 overflow-y-auto min-h-0 flex-1">
+          <div className="bg-sky-50 p-4 rounded-2xl border border-sky-100">
+            <h4 className="font-bold text-slate-800 mb-3">Related Activity</h4>
+            <div className="space-y-3 text-sm">
+              <div className="bg-white p-3 rounded-xl border border-sky-100">
+                <p className="text-xs text-sky-700 uppercase font-bold">Activity Name</p>
+                <p className="font-bold text-slate-800">{activity.title || "N/A"}</p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-sky-100">
+                <p className="text-xs text-sky-700 uppercase font-bold">Activity Description</p>
+                <p className="font-medium text-slate-700 leading-relaxed whitespace-pre-line">{activity.description || "N/A"}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
             <h4 className="font-bold text-slate-800 mb-3">Auto-filled HR Contact Info</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
